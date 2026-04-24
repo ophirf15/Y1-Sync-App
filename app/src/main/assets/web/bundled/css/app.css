@@ -1,0 +1,133 @@
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #0f141a;
+  color: #edf2f7;
+}
+
+.layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: 190px;
+  background: #161d25;
+  padding: 12px;
+  box-sizing: border-box;
+}
+
+.sidebar h1 {
+  margin: 0 0 10px 0;
+  font-size: 16px;
+}
+
+.sidebar a {
+  display: block;
+  color: #d4dee8;
+  text-decoration: none;
+  padding: 7px 8px;
+  border-radius: 6px;
+  margin-bottom: 4px;
+}
+
+.sidebar a.active,
+.sidebar a:hover {
+  background: #2c3a49;
+}
+
+.content {
+  flex: 1;
+  padding: 12px;
+  box-sizing: border-box;
+}
+
+.topbar {
+  background: #1c2630;
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.ip {
+  font-size: 22px;
+  color: #8dd6ff;
+  font-weight: bold;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.card {
+  background: #1a222c;
+  border: 1px solid #2b3948;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.card h3 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+th, td {
+  border-bottom: 1px solid #2f3e4d;
+  text-align: left;
+  padding: 6px 4px;
+}
+
+input, select, textarea, button {
+  font-size: 13px;
+}
+
+input, select, textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px;
+  color: #e7eef5;
+  background: #0f151d;
+  border: 1px solid #304052;
+  border-radius: 6px;
+  margin-bottom: 7px;
+}
+
+button {
+  border: 0;
+  border-radius: 6px;
+  background: #355173;
+  color: #f7fbff;
+  padding: 8px 10px;
+  cursor: pointer;
+  margin-right: 6px;
+  margin-bottom: 6px;
+}
+
+button.secondary {
+  background: #3b4551;
+}
+
+button.danger {
+  background: #7a3842;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+}
+
+.row > * {
+  flex: 1;
+}
+
+.muted {
+  color: #9eb0c2;
+}

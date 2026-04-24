@@ -1,0 +1,32 @@
+<!doctype html>
+<html><head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Y1 Console - Profiles</title><link rel="stylesheet" href="/css/app.css">
+</head><body><div class="layout">
+  <div class="sidebar"><h1>Y1 Console</h1>
+    <a href="/dashboard.html" data-nav="dashboard">Dashboard</a>
+    <a href="/profiles.html" data-nav="profiles">Sync Profiles</a>
+    <a href="/library.html" data-nav="library">Library</a>
+    <a href="/playlists.html" data-nav="playlists">Playlists</a>
+    <a href="/maintenance.html" data-nav="maintenance">Maintenance</a>
+    <a href="/updates.html" data-nav="updates">Updates</a>
+    <a href="/settings.html" data-nav="settings">Settings/Status</a>
+  </div>
+  <div class="content">
+    <div class="topbar"><div class="ip" id="ipHeader">Loading...</div><div class="muted" id="statusHeader"></div></div>
+    <div class="card">
+      <h3>Profiles</h3>
+      <button onclick="createProfile()">Create Profile</button>
+      <a href="/profile-edit.html"><button class="secondary">Open Editor</button></a>
+      <table><thead><tr><th>Name</th><th>Protocol</th><th>Host</th><th>Root</th><th>Local</th><th>Active</th></tr></thead><tbody id="rows"></tbody></table>
+    </div>
+  </div>
+</div>
+<script src="/js/api.js"></script><script src="/js/app.js"></script>
+<script>
+  y1Ui.setActiveNav("profiles"); y1Ui.renderTopStatus();
+  function loadProfiles(){ y1Api.profiles().then(function(list){ document.getElementById("rows").innerHTML = y1Ui.toTableRows(list,["name","protocol","host","remote_root_path","local_destination","is_active"]); }); }
+  function createProfile(){ y1Api.createProfile().then(function(){ loadProfiles(); alert("Profile created"); }); }
+  loadProfiles();
+</script>
+</body></html>

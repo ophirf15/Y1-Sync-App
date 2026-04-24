@@ -1,0 +1,9 @@
+{
+  "bundle_name": "y1-management-console",
+  "bundle_version": "2.0.0-stage2",
+  "schema_version": "1",
+  "min_app_version": "0.1.0-stage1",
+  "entrypoint": "index.html",
+  "generated_at": "2026-04-24T00:00:00Z",
+  "notes": "Stage 2 browser-based management console"
+}

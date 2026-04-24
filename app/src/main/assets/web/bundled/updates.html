@@ -1,0 +1,23 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Y1 Console - Updates</title><link rel="stylesheet" href="/css/app.css"></head>
+<body><div class="layout"><div class="sidebar"><h1>Y1 Console</h1>
+  <a href="/dashboard.html" data-nav="dashboard">Dashboard</a><a href="/profiles.html" data-nav="profiles">Sync Profiles</a><a href="/library.html" data-nav="library">Library</a><a href="/playlists.html" data-nav="playlists">Playlists</a><a href="/maintenance.html" data-nav="maintenance">Maintenance</a><a href="/updates.html" data-nav="updates">Updates</a><a href="/settings.html" data-nav="settings">Settings/Status</a>
+</div><div class="content"><div class="topbar"><div class="ip" id="ipHeader">Loading...</div><div class="muted" id="statusHeader"></div></div>
+  <div class="card"><h3>Web Bundle Updates</h3>
+    <div id="updateStatus" class="muted"></div>
+    <button onclick="check()">Check Now</button>
+    <button onclick="apply()">Download/Apply (stub)</button>
+    <button class="secondary" onclick="revert()">Revert to Bundled</button>
+  </div>
+</div></div>
+<script src="/js/api.js"></script><script src="/js/app.js"></script>
+<script>
+  y1Ui.setActiveNav("updates"); y1Ui.renderTopStatus();
+  function refresh(){ y1Api.updatesStatus().then(function(s){ document.getElementById("updateStatus").textContent = "App " + s.app_version + " | Active bundle " + s.active_bundle_version + " | URL " + s.manifest_url; }); }
+  function check(){ y1Api.checkUpdates().then(function(){ alert("Update check complete"); refresh(); }); }
+  function apply(){ alert("Bundle download/apply UI scaffolded for Stage 2. API wiring can be expanded in next pass."); }
+  function revert(){ y1Api.revertBundled().then(function(){ alert("Reverted to bundled UI"); refresh(); }); }
+  refresh();
+</script>
+</body></html>

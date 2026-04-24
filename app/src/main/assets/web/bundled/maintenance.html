@@ -1,0 +1,21 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Y1 Console - Maintenance</title><link rel="stylesheet" href="/css/app.css"></head>
+<body><div class="layout"><div class="sidebar"><h1>Y1 Console</h1>
+  <a href="/dashboard.html" data-nav="dashboard">Dashboard</a><a href="/profiles.html" data-nav="profiles">Sync Profiles</a><a href="/library.html" data-nav="library">Library</a><a href="/playlists.html" data-nav="playlists">Playlists</a><a href="/maintenance.html" data-nav="maintenance">Maintenance</a><a href="/updates.html" data-nav="updates">Updates</a><a href="/settings.html" data-nav="settings">Settings/Status</a>
+</div><div class="content"><div class="topbar"><div class="ip" id="ipHeader">Loading...</div><div class="muted" id="statusHeader"></div></div>
+  <div class="card"><h3>Maintenance Tools</h3>
+    <button onclick="run('rebuild-sync-index')">Rebuild Sync Index</button>
+    <button onclick="run('clean-part-files')">Clean .part Files</button>
+    <button onclick="run('prune-empty-folders')">Prune Empty Folders</button>
+    <button onclick="y1Api.libraryRescan().then(ok)">Rescan Media Library</button>
+    <div id="result" class="muted"></div>
+  </div>
+</div></div>
+<script src="/js/api.js"></script><script src="/js/app.js"></script>
+<script>
+  y1Ui.setActiveNav("maintenance"); y1Ui.renderTopStatus();
+  function ok(){ document.getElementById("result").textContent = "Action sent."; }
+  function run(action){ y1Api.maintenance(action).then(ok); }
+</script>
+</body></html>

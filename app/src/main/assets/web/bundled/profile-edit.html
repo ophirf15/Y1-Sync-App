@@ -1,0 +1,24 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Y1 Console - Profile Editor</title><link rel="stylesheet" href="/css/app.css"></head>
+<body><div class="layout"><div class="sidebar"><h1>Y1 Console</h1>
+  <a href="/dashboard.html">Dashboard</a><a class="active" href="/profiles.html">Sync Profiles</a><a href="/library.html">Library</a><a href="/playlists.html">Playlists</a><a href="/maintenance.html">Maintenance</a><a href="/updates.html">Updates</a><a href="/settings.html">Settings/Status</a>
+</div><div class="content"><div class="topbar"><div class="ip" id="ipHeader">Loading...</div><div class="muted" id="statusHeader"></div></div>
+  <div class="card"><h3>Profile Editor</h3>
+    <div class="row"><input placeholder="Profile Name"><select><option>SMB</option><option>WEBDAV (scaffold)</option></select></div>
+    <div class="row"><input placeholder="Host"><input placeholder="Port" value="445"></div>
+    <div class="row"><input placeholder="Share/Base Path"><input placeholder="Remote Root Path"></div>
+    <div class="row"><input placeholder="Username"><input placeholder="Password"></div>
+    <div class="row"><input placeholder="Domain/Workgroup"><input placeholder="Local Destination"></div>
+    <div class="row"><select><option>INTERNAL</option><option>SDCARD</option></select><input placeholder="File Type Filters (csv)"></div>
+    <div class="row"><input placeholder="Allowed SSIDs (csv)"><input placeholder="Battery Threshold %"></div>
+    <div class="row"><input placeholder="Retry Count" value="2"><input placeholder="Timeout Seconds" value="30"></div>
+    <div class="row"><input placeholder="Max Parallel Downloads" value="1"><input placeholder="Temp Extension" value=".part"></div>
+    <label><input type="checkbox"> Include subfolders</label>
+    <label><input type="checkbox"> Charging only</label>
+    <label><input type="checkbox"> Mirror delete (off by default)</label>
+    <div><button>Save Profile</button><button class="secondary">Duplicate</button><button class="danger">Delete</button><button class="secondary">Test Connection</button><button class="secondary">Run Sync</button></div>
+  </div>
+</div></div>
+<script src="/js/api.js"></script><script src="/js/app.js"></script><script>y1Ui.renderTopStatus();</script>
+</body></html>

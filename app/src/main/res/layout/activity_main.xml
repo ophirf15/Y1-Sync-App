@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/screen_bg"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_panel_dark"
+        android:orientation="vertical"
+        android:padding="@dimen/screen_padding">
+
+        <TextView
+            android:id="@+id/txtIpTop"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="@dimen/row_spacing"
+            android:text="@string/ip_waiting"
+            android:textColor="@color/accent_ip"
+            android:textSize="@dimen/ip_text"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/txtHeader"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Y1 Sync Runtime"
+            android:textColor="@color/white"
+            android:textSize="@dimen/text_large"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnWifi"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/control_height"
+            android:layout_marginTop="@dimen/row_spacing"
+            android:background="@drawable/bg_button_dark"
+            android:text="@string/wifi_toggle"
+            android:textColor="@color/button_text" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/row_spacing"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/editServerPort"
+                android:layout_width="0dp"
+                android:layout_height="@dimen/control_height"
+                android:layout_weight="1"
+                android:background="@drawable/bg_input_dark"
+                android:ems="6"
+                android:hint="@string/server_port_hint"
+                android:inputType="number"
+                android:paddingLeft="8dp"
+                android:paddingRight="8dp"
+                android:textColor="@color/white"
+                android:textColorHint="@color/input_stroke" />
+
+            <Button
+                android:id="@+id/btnSetPort"
+                android:layout_width="0dp"
+                android:layout_height="@dimen/control_height"
+                android:layout_marginLeft="6dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_button_dark"
+                android:text="@string/set_port"
+                android:textColor="@color/button_text" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btnStartServer"
+                android:layout_width="0dp"
+                android:layout_height="@dimen/control_height"
+                android:layout_marginTop="@dimen/row_spacing"
+                android:layout_weight="1"
+                android:background="@drawable/bg_button_dark"
+                android:text="@string/server_start"
+                android:textColor="@color/button_text" />
+
+            <Button
+                android:id="@+id/btnStopServer"
+                android:layout_width="0dp"
+                android:layout_height="@dimen/control_height"
+                android:layout_marginLeft="6dp"
+                android:layout_marginTop="@dimen/row_spacing"
+                android:layout_weight="1"
+                android:background="@drawable/bg_button_dark"
+                android:text="@string/server_stop"
+                android:textColor="@color/button_text" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/btnSyncNow"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/control_height"
+            android:layout_marginTop="@dimen/row_spacing"
+            android:background="@drawable/bg_button_dark"
+            android:text="@string/sync_now"
+            android:textColor="@color/button_text" />
+
+        <Button
+            android:id="@+id/btnAutoSync"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/control_height"
+            android:layout_marginTop="@dimen/row_spacing"
+            android:background="@drawable/bg_button_dark"
+            android:text="@string/autosync_toggle"
+            android:textColor="@color/button_text" />
+
+        <Button
+            android:id="@+id/btnCheckUpdates"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/control_height"
+            android:layout_marginTop="@dimen/row_spacing"
+            android:background="@drawable/bg_button_dark"
+            android:text="@string/check_updates"
+            android:textColor="@color/button_text" />
+
+        <Button
+            android:id="@+id/btnRevertUpdates"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/control_height"
+            android:layout_marginTop="@dimen/row_spacing"
+            android:background="@drawable/bg_button_dark"
+            android:text="@string/revert_updates"
+            android:textColor="@color/button_text" />
+
+        <TextView
+            android:id="@+id/txtStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/row_spacing"
+            android:textColor="@color/white"
+            android:textSize="@dimen/text_small" />
+    </LinearLayout>
+</ScrollView>

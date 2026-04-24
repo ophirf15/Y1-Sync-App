@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">Innioasis Y1 Sync Runtime</string>
+    <string name="server_start">Start Server</string>
+    <string name="server_stop">Stop Server</string>
+    <string name="sync_now">Sync Now</string>
+    <string name="wifi_toggle">Open Wi-Fi Settings</string>
+    <string name="server_port_hint">Server Port (default 8081)</string>
+    <string name="set_port">Set Port</string>
+    <string name="autosync_toggle">Auto-sync ON/OFF</string>
+    <string name="check_updates">Check Web UI Updates</string>
+    <string name="revert_updates">Revert Bundled Web UI</string>
+    <string name="ip_waiting">IP: waiting for Wi-Fi</string>
+</resources>
