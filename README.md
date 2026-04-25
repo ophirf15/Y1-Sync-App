@@ -87,4 +87,4 @@ Issues and PRs are welcome on the canonical GitHub repo. For the first release n
 
 ## License
 
-No license file is bundled in this repository yet. Add a `LICENSE` file when you decide how you want to distribute the project.
+GPL-3.0 license
