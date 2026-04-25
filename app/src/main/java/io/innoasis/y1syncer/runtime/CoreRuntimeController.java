@@ -175,6 +175,7 @@ public class CoreRuntimeController {
         this.serverPort = loadServerPort();
         this.manifestUrl = prefs.getString(KEY_MANIFEST_URL, DEFAULT_MANIFEST_URL);
         this.autoSyncEnabled = prefs.getBoolean(KEY_AUTO_SYNC, false);
+        hydrateLastSyncStatusFromHistory();
         if (autoSyncEnabled) {
             syncAlarmScheduler.scheduleInterval(6 * 60 * 60 * 1000L);
         }
@@ -811,5 +812,27 @@ public class CoreRuntimeController {
 
     public JSONObject smbBrowse(JSONObject body) throws JSONException {
         return SmbBrowser.browse(body);
+    }
+
+    private void hydrateLastSyncStatusFromHistory() {
+        try {
+            JSONArray runs = syncStateRepository.getRecentRuns(1);
+            if (runs.length() == 0) {
+                return;
+            }
+            JSONObject r = runs.getJSONObject(0);
+            int total = r.optInt("total_files", 0);
+            int ok = r.optInt("success_files", 0);
+            int fail = r.optInt("failed_files", 0);
+            String reason = r.optString("reason", "");
+            String trigger = r.optString("trigger", "");
+            if (reason.length() > 0) {
+                lastSyncStatus = "[" + trigger + "] " + reason;
+            } else {
+                lastSyncStatus = "[" + trigger + "] files=" + total + " ok=" + ok + " fail=" + fail;
+            }
+        } catch (Exception ignored) {
+            // Keep default "Never synced" if history is unavailable/corrupt.
+        }
     }
 }

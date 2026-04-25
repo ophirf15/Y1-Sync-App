@@ -7,6 +7,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import io.innoasis.y1syncer.db.repos.LogRepository;
 import io.innoasis.y1syncer.db.repos.ProfileRepository;
@@ -21,6 +22,7 @@ import io.innoasis.y1syncer.util.MediaScanHelper;
 
 public class SyncOrchestrator {
     private static final String TAG = "SyncOrchestrator";
+    private static final long MTIME_TOLERANCE_MS = 3000L;
     private final Context appContext;
     private final LogRepository logRepository;
     private final ProfileRepository profileRepository;
@@ -91,6 +93,7 @@ public class SyncOrchestrator {
         for (RemoteFileEntry f : files) {
             totalBytes += Math.max(0L, f.size);
         }
+        Map<String, SyncStateRepository.CachedFileState> cachedByRemote = syncStateRepository.loadFileStatesByProfile(p.id);
         if (progressListener != null) {
             progressListener.onSyncStart(p.id, p.name, files.size(), totalBytes);
         }
@@ -119,7 +122,8 @@ public class SyncOrchestrator {
                 }
                 continue;
             }
-            if (out.exists() && out.isFile() && out.length() == entry.size && out.lastModified() == entry.modifiedTs) {
+            SyncStateRepository.CachedFileState cached = cachedByRemote.get(entry.remotePath);
+            if (shouldSkipExisting(out, cached, entry)) {
                 syncStateRepository.upsertFileState(p.id, p.protocol, entry.remotePath, out.getAbsolutePath(), entry.size, entry.modifiedTs,
                         "unchanged", "skipped");
                 skipped++;
@@ -190,5 +194,35 @@ public class SyncOrchestrator {
 
     public RemoteClient getSmbClient() {
         return smbClient;
+    }
+
+    private static boolean isSameTimestamp(long localTs, long remoteTs) {
+        if (remoteTs <= 0) {
+            // Some servers/filesystems report unknown mtime; treat same-size files as unchanged.
+            return true;
+        }
+        if (localTs <= 0) {
+            return false;
+        }
+        return Math.abs(localTs - remoteTs) <= MTIME_TOLERANCE_MS;
+    }
+
+    private static boolean shouldSkipExisting(File out, SyncStateRepository.CachedFileState cached, RemoteFileEntry entry) {
+        if (!out.exists() || !out.isFile() || out.length() != entry.size) {
+            return false;
+        }
+        if (isSameTimestamp(out.lastModified(), entry.modifiedTs)) {
+            return true;
+        }
+        if (cached == null) {
+            return false;
+        }
+        if (!"downloaded".equalsIgnoreCase(cached.downloadStatus) && !"skipped".equalsIgnoreCase(cached.downloadStatus)) {
+            return false;
+        }
+        if (cached.fileSize != entry.size) {
+            return false;
+        }
+        return isSameTimestamp(cached.remoteModifiedTs, entry.modifiedTs);
     }
 }

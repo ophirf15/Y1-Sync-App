@@ -8,6 +8,9 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import io.innoasis.y1syncer.db.DbContract;
 import io.innoasis.y1syncer.db.Y1DatabaseHelper;
 
@@ -77,5 +80,60 @@ public class SyncStateRepository {
             c.close();
         }
         return arr;
+    }
+
+    public Map<String, CachedFileState> loadFileStatesByProfile(long profileId) {
+        Map<String, CachedFileState> out = new HashMap<String, CachedFileState>();
+        SQLiteDatabase db = dbHelper.getReadableDatabase();
+        Cursor c = db.query(
+                DbContract.T_SYNC_STATE,
+                new String[]{"remote_path", "local_path", "file_size", "remote_modified_ts", "download_status"},
+                "profile_id=?",
+                new String[]{String.valueOf(profileId)},
+                null,
+                null,
+                null
+        );
+        try {
+            while (c.moveToNext()) {
+                CachedFileState s = new CachedFileState();
+                s.remotePath = getStringSafe(c, "remote_path");
+                s.localPath = getStringSafe(c, "local_path");
+                s.fileSize = getLongSafe(c, "file_size", -1L);
+                s.remoteModifiedTs = getLongSafe(c, "remote_modified_ts", -1L);
+                s.downloadStatus = getStringSafe(c, "download_status");
+                if (s.remotePath.length() > 0) {
+                    out.put(s.remotePath, s);
+                }
+            }
+        } finally {
+            c.close();
+        }
+        return out;
+    }
+
+    private static String getStringSafe(Cursor c, String column) {
+        int idx = c.getColumnIndex(column);
+        if (idx < 0 || c.isNull(idx)) {
+            return "";
+        }
+        String s = c.getString(idx);
+        return s == null ? "" : s;
+    }
+
+    private static long getLongSafe(Cursor c, String column, long def) {
+        int idx = c.getColumnIndex(column);
+        if (idx < 0 || c.isNull(idx)) {
+            return def;
+        }
+        return c.getLong(idx);
+    }
+
+    public static class CachedFileState {
+        public String remotePath = "";
+        public String localPath = "";
+        public long fileSize = -1L;
+        public long remoteModifiedTs = -1L;
+        public String downloadStatus = "";
     }
 }
