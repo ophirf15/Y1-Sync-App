@@ -5,14 +5,47 @@
   <a href="/dashboard.html" data-nav="dashboard">Dashboard</a><a href="/profiles.html" data-nav="profiles">Sync Profiles</a><a href="/library.html" data-nav="library">Library</a><a href="/playlists.html" data-nav="playlists">Playlists</a><a href="/maintenance.html" data-nav="maintenance">Maintenance</a><a href="/updates.html" data-nav="updates">Updates</a><a href="/settings.html" data-nav="settings">Settings/Status</a>
 </div><div class="content"><div class="topbar"><div class="ip" id="ipHeader">Loading...</div><div class="muted" id="statusHeader"></div></div>
   <div class="card"><h3>Playlist Manager</h3>
-    <button onclick="alert('Create playlist endpoint next pass')">Create</button>
-    <a href="/playlist-edit.html"><button class="secondary">Open Editor</button></a>
-    <table><thead><tr><th>Name</th><th>Entries</th></tr></thead><tbody id="rows"></tbody></table>
+    <button onclick="createPl()">Create playlist</button>
+    <table><thead><tr><th>Name</th><th>Entries</th><th></th></tr></thead><tbody id="rows"></tbody></table>
   </div>
 </div></div>
 <script src="/js/api.js"></script><script src="/js/app.js"></script>
 <script>
   y1Ui.setActiveNav("playlists"); y1Ui.renderTopStatus();
-  y1Api.playlists().then(function(items){ document.getElementById("rows").innerHTML = y1Ui.toTableRows(items,["name","entries"]); });
+  function load() {
+    y1Api.playlists().then(function (items) {
+      var html = "";
+      for (var i = 0; i < items.length; i++) {
+        var it = items[i];
+        html += "<tr><td>" + String(it.name) + "</td><td>" + String(it.entries) + "</td>";
+        html += "<td><a href='/playlist-edit.html?id=" + it.id + "'><button class='secondary'>Edit</button></a> ";
+        html += "<button class='secondary' onclick='dup(" + it.id + ")'>Duplicate</button> ";
+        html += "<button class='danger' onclick='delPl(" + it.id + ")'>Delete</button></td></tr>";
+      }
+      document.getElementById("rows").innerHTML = html || "<tr><td colspan='3' class='muted'>No playlists</td></tr>";
+    });
+  }
+  function createPl() {
+    var n = prompt("Playlist name?");
+    if (!n) return;
+    y1Api.createPlaylist(n).then(function (r) {
+      if (!r.ok) alert("Create failed");
+      load();
+    });
+  }
+  function dup(id) {
+    y1Api.duplicatePlaylist(id).then(function (r) {
+      if (!r.ok) alert("Duplicate failed");
+      load();
+    });
+  }
+  function delPl(id) {
+    if (!confirm("Delete this playlist?")) return;
+    y1Api.deletePlaylist(id).then(function (r) {
+      if (!r.ok) alert("Delete failed");
+      load();
+    });
+  }
+  load();
 </script>
 </body></html>

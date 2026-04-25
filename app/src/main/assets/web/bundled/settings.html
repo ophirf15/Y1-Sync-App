@@ -4,17 +4,55 @@
 <body><div class="layout"><div class="sidebar"><h1>Y1 Console</h1>
   <a href="/dashboard.html" data-nav="dashboard">Dashboard</a><a href="/profiles.html" data-nav="profiles">Sync Profiles</a><a href="/library.html" data-nav="library">Library</a><a href="/playlists.html" data-nav="playlists">Playlists</a><a href="/maintenance.html" data-nav="maintenance">Maintenance</a><a href="/updates.html" data-nav="updates">Updates</a><a href="/settings.html" data-nav="settings">Settings/Status</a>
 </div><div class="content"><div class="topbar"><div class="ip" id="ipHeader">Loading...</div><div class="muted" id="statusHeader"></div></div>
+  <div class="card"><h3>Runtime settings</h3>
+    <div class="row"><label>HTTP port <input type="number" id="port" min="1" max="65535"></label>
+      <button onclick="savePort()">Apply port (restarts server)</button></div>
+    <div class="row"><label>Manifest URL<br><input type="text" id="manifest" style="width:100%;max-width:560px"></label>
+      <button onclick="saveManifest()">Save manifest URL</button></div>
+    <div class="row"><label><input type="checkbox" id="autosync"> Auto-sync (6h alarm)</label>
+      <button onclick="saveAuto()">Save auto-sync</button></div>
+    <p class="muted" id="saveMsg"></p>
+  </div>
   <div class="grid">
     <div class="card"><h3>Device Info</h3><div id="device"></div></div>
     <div class="card"><h3>Service Status</h3><div id="service"></div></div>
-    <div class="card"><h3>Logs</h3><pre id="logs" class="muted"></pre></div>
+    <div class="card"><h3>Logs</h3><button onclick="refreshLogs()">Refresh logs</button><pre id="logs" class="muted"></pre></div>
   </div>
 </div></div>
 <script src="/js/api.js"></script><script src="/js/app.js"></script>
 <script>
   y1Ui.setActiveNav("settings"); y1Ui.renderTopStatus();
-  y1Api.deviceInfo().then(function(d){ document.getElementById("device").textContent = JSON.stringify(d); });
-  y1Api.status().then(function(s){ document.getElementById("service").textContent = JSON.stringify(s); });
-  y1Api.logs().then(function(l){ document.getElementById("logs").textContent = JSON.stringify(l, null, 2); });
+  function load() {
+    y1Api.settings().then(function (s) {
+      document.getElementById("port").value = s.server_port;
+      document.getElementById("manifest").value = s.manifest_url || "";
+      document.getElementById("autosync").checked = !!s.auto_sync;
+    });
+    y1Api.deviceInfo().then(function (d) { document.getElementById("device").textContent = JSON.stringify(d); });
+    y1Api.status().then(function (s) { document.getElementById("service").textContent = JSON.stringify(s); });
+    refreshLogs();
+  }
+  function refreshLogs() {
+    y1Api.logs().then(function (l) { document.getElementById("logs").textContent = JSON.stringify(l, null, 2); });
+  }
+  function savePort() {
+    var p = parseInt(document.getElementById("port").value, 10);
+    y1Api.setServerPort(p).then(function (r) {
+      document.getElementById("saveMsg").textContent = r.ok ? "Port saved." : (r.error || "Failed");
+      y1Ui.renderTopStatus();
+    });
+  }
+  function saveManifest() {
+    var u = document.getElementById("manifest").value.trim();
+    y1Api.setManifestUrl(u).then(function (r) {
+      document.getElementById("saveMsg").textContent = r.ok ? "Manifest URL saved." : (r.error || "Failed");
+    });
+  }
+  function saveAuto() {
+    y1Api.setAutoSync(document.getElementById("autosync").checked).then(function (r) {
+      document.getElementById("saveMsg").textContent = r.ok ? "Auto-sync saved." : "Failed";
+    });
+  }
+  load();
 </script>
 </body></html>

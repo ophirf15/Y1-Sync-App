@@ -13,6 +13,13 @@ import io.innoasis.y1syncer.runtime.CoreRuntimeController;
 public class ApiRouter {
     private static final Pattern PROFILE_ID_PATTERN = Pattern.compile("^/api/profiles/(\\d+)$");
     private static final Pattern PROFILE_ACTION_PATTERN = Pattern.compile("^/api/profiles/(\\d+)/(duplicate|enable|disable|test-connection|sync-now)$");
+    private static final Pattern LIBRARY_ITEM_ID_PATTERN = Pattern.compile("^/api/library/items/(\\d+)$");
+    private static final Pattern PLAYLIST_ID_PATTERN = Pattern.compile("^/api/playlists/(\\d+)$");
+    private static final Pattern PLAYLIST_DUPLICATE_PATTERN = Pattern.compile("^/api/playlists/(\\d+)/duplicate$");
+    private static final Pattern PLAYLIST_ENTRIES_PATTERN = Pattern.compile("^/api/playlists/(\\d+)/entries$");
+    private static final Pattern PLAYLIST_ENTRY_ID_PATTERN = Pattern.compile("^/api/playlists/(\\d+)/entries/(\\d+)$");
+    private static final Pattern PLAYLIST_REORDER_PATTERN = Pattern.compile("^/api/playlists/(\\d+)/entries/reorder$");
+    private static final Pattern PLAYLIST_EXPORT_PATTERN = Pattern.compile("^/api/playlists/(\\d+)/export\\.m3u8$");
 
     private final CoreRuntimeController runtimeController;
 
@@ -28,6 +35,18 @@ public class ApiRouter {
             }
             if ("/api/device-info".equals(uri)) {
                 return new ApiResponse(200, runtimeController.getDeviceInfoJson().toString());
+            }
+            if ("/api/settings".equals(uri) && "GET".equals(method)) {
+                return new ApiResponse(200, runtimeController.getSettingsJson().toString());
+            }
+            if ("/api/settings/manifest".equals(uri) && "POST".equals(method)) {
+                return new ApiResponse(200, runtimeController.setManifestUrlSetting(body).toString());
+            }
+            if ("/api/settings/server-port".equals(uri) && "POST".equals(method)) {
+                return new ApiResponse(200, runtimeController.setServerPortSetting(body).toString());
+            }
+            if ("/api/settings/auto-sync".equals(uri) && "POST".equals(method)) {
+                return new ApiResponse(200, runtimeController.setAutoSyncSetting(body).toString());
             }
             if ("/api/sync/now".equals(uri) && "POST".equals(method)) {
                 runtimeController.syncNow("api");
@@ -81,14 +100,69 @@ public class ApiRouter {
             if ("/api/library/scan-status".equals(uri)) {
                 return new ApiResponse(200, runtimeController.getLibraryScanStatusJson().toString());
             }
-            if ("/api/library/items".equals(uri)) {
-                return new ApiResponse(200, runtimeController.getLibraryItemsJson().toString());
+            if ("/api/library/items".equals(uri) && "GET".equals(method)) {
+                return new ApiResponse(200, runtimeController.getLibraryItemsJson(queryParams).toString());
+            }
+            Matcher libDel = LIBRARY_ITEM_ID_PATTERN.matcher(uri);
+            if (libDel.matches() && "DELETE".equals(method)) {
+                long mid = Long.parseLong(libDel.group(1));
+                return new ApiResponse(200, runtimeController.deleteLibraryItem(mid).toString());
             }
             if ("/api/library/rescan".equals(uri) && "POST".equals(method)) {
                 return new ApiResponse(200, runtimeController.maintenanceAction("rescan-library").toString());
             }
+            if ("/api/library/reindex-metadata".equals(uri) && "POST".equals(method)) {
+                return new ApiResponse(200, runtimeController.reindexLibraryMetadata().toString());
+            }
             if ("/api/playlists".equals(uri) && "GET".equals(method)) {
                 return new ApiResponse(200, runtimeController.getPlaylistsJson().toString());
+            }
+            if ("/api/playlists".equals(uri) && "POST".equals(method)) {
+                return new ApiResponse(200, runtimeController.createPlaylist(body).toString());
+            }
+            Matcher plExport = PLAYLIST_EXPORT_PATTERN.matcher(uri);
+            if (plExport.matches() && "GET".equals(method)) {
+                long pid = Long.parseLong(plExport.group(1));
+                String m3u = runtimeController.exportPlaylistM3u8(pid);
+                return new ApiResponse(200, m3u, "application/vnd.apple.mpegurl");
+            }
+            Matcher plDup = PLAYLIST_DUPLICATE_PATTERN.matcher(uri);
+            if (plDup.matches() && "POST".equals(method)) {
+                long pid = Long.parseLong(plDup.group(1));
+                return new ApiResponse(200, runtimeController.duplicatePlaylist(pid).toString());
+            }
+            Matcher plReorder = PLAYLIST_REORDER_PATTERN.matcher(uri);
+            if (plReorder.matches() && "PUT".equals(method)) {
+                long pid = Long.parseLong(plReorder.group(1));
+                return new ApiResponse(200, runtimeController.reorderPlaylistEntries(pid, body).toString());
+            }
+            Matcher plEntryDel = PLAYLIST_ENTRY_ID_PATTERN.matcher(uri);
+            if (plEntryDel.matches() && "DELETE".equals(method)) {
+                long entryId = Long.parseLong(plEntryDel.group(2));
+                return new ApiResponse(200, runtimeController.removePlaylistEntry(entryId).toString());
+            }
+            Matcher plEntries = PLAYLIST_ENTRIES_PATTERN.matcher(uri);
+            if (plEntries.matches()) {
+                long pid = Long.parseLong(plEntries.group(1));
+                if ("GET".equals(method)) {
+                    return new ApiResponse(200, runtimeController.getPlaylistEntriesJson(pid).toString());
+                }
+                if ("POST".equals(method)) {
+                    return new ApiResponse(200, runtimeController.addPlaylistTracks(pid, body).toString());
+                }
+            }
+            Matcher plId = PLAYLIST_ID_PATTERN.matcher(uri);
+            if (plId.matches()) {
+                long pid = Long.parseLong(plId.group(1));
+                if ("GET".equals(method)) {
+                    return new ApiResponse(200, runtimeController.getPlaylistJson(pid).toString());
+                }
+                if ("PUT".equals(method)) {
+                    return new ApiResponse(200, runtimeController.updatePlaylist(pid, body).toString());
+                }
+                if ("DELETE".equals(method)) {
+                    return new ApiResponse(200, runtimeController.deletePlaylist(pid).toString());
+                }
             }
             if ("/api/updates/status".equals(uri) && "GET".equals(method)) {
                 return new ApiResponse(200, runtimeController.getUpdatesStatusJson().toString());
@@ -113,10 +187,10 @@ public class ApiRouter {
                 return new ApiResponse(200, runtimeController.maintenanceAction("prune-empty-folders").toString());
             }
             if ("/api/maintenance/failed-downloads".equals(uri) && "GET".equals(method)) {
-                return new ApiResponse(200, new JSONArray().toString());
+                return new ApiResponse(200, runtimeController.getFailedDownloadsJson().toString());
             }
             if ("/api/maintenance/incomplete-downloads".equals(uri) && "GET".equals(method)) {
-                return new ApiResponse(200, new JSONArray().toString());
+                return new ApiResponse(200, runtimeController.getIncompleteDownloadsJson().toString());
             }
             if ("/api/updates/revert-bundled".equals(uri) && "POST".equals(method)) {
                 runtimeController.revertBundledUi();

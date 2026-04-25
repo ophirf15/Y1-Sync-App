@@ -45,4 +45,27 @@ public class LogRepository {
         }
         return arr;
     }
+
+    public JSONArray searchMessages(String contains, int limit) throws JSONException {
+        JSONArray arr = new JSONArray();
+        if (contains == null || contains.length() == 0) {
+            return arr;
+        }
+        String esc = contains.replace("%", "\\%").replace("_", "\\_");
+        String like = "%" + esc + "%";
+        SQLiteDatabase db = dbHelper.getReadableDatabase();
+        Cursor c = db.query(DbContract.T_APP_LOGS, null, "message LIKE ?", new String[]{like}, null, null, "id DESC", String.valueOf(Math.max(1, limit)));
+        try {
+            while (c.moveToNext()) {
+                JSONObject row = new JSONObject();
+                row.put("level", c.getString(c.getColumnIndex("level")));
+                row.put("message", c.getString(c.getColumnIndex("message")));
+                row.put("created_at", c.getLong(c.getColumnIndex("created_at")));
+                arr.put(row);
+            }
+        } finally {
+            c.close();
+        }
+        return arr;
+    }
 }

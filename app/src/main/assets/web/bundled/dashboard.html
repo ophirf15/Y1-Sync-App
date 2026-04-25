@@ -1,4 +1,3 @@
-<!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
@@ -49,7 +48,26 @@
     document.getElementById("deviceInfo").textContent = d.model + " | Android " + d.android + " | SDK " + d.sdk;
   });
   function runAction(path) {
-    fetch(path, { method: "POST" }).then(function () { alert("Done"); y1Ui.renderTopStatus(); });
+    fetch(path, { method: "POST" })
+      .then(function (r) {
+        return r.text().then(function (t) {
+          var j = {};
+          try { j = JSON.parse(t); } catch (e) {}
+          if (!r.ok) {
+            alert("Failed (" + r.status + "): " + (j.error || j.message || t || "unknown"));
+            return;
+          }
+          if (j.ok === false) {
+            alert("Failed: " + (j.error || j.message || JSON.stringify(j)));
+            return;
+          }
+          alert("OK: " + (t.length > 400 ? t.substring(0, 400) + "…" : t));
+          y1Ui.renderTopStatus();
+        });
+      })
+      .catch(function (e) {
+        alert(String(e));
+      });
   }
 </script>
 </body>

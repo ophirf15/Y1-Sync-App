@@ -45,9 +45,24 @@ window.y1Api = (function () {
     return encodeURIComponent(v || "");
   }
 
+  function queryString(obj) {
+    if (!obj) return "";
+    var parts = [];
+    for (var k in obj) {
+      if (obj.hasOwnProperty(k) && obj[k] !== undefined && obj[k] !== null && String(obj[k]).length) {
+        parts.push(encodeURIComponent(k) + "=" + encodeURIComponent(String(obj[k])));
+      }
+    }
+    return parts.length ? "?" + parts.join("&") : "";
+  }
+
   return {
     status: function () { return get("/api/status"); },
     deviceInfo: function () { return get("/api/device-info"); },
+    settings: function () { return get("/api/settings"); },
+    setManifestUrl: function (url) { return post("/api/settings/manifest", { url: url }); },
+    setServerPort: function (port) { return post("/api/settings/server-port", { port: port }); },
+    setAutoSync: function (enabled) { return post("/api/settings/auto-sync", { enabled: !!enabled }); },
     profiles: function () { return get("/api/profiles"); },
     profile: function (id) { return get("/api/profiles/" + id); },
     createProfile: function (payload) { return post("/api/profiles", payload || {}); },
@@ -61,9 +76,21 @@ window.y1Api = (function () {
     syncNow: function () { return post("/api/sync/now"); },
     syncStatus: function () { return get("/api/sync/status"); },
     syncRuns: function () { return get("/api/sync/runs"); },
-    libraryItems: function () { return get("/api/library/items"); },
+    libraryItems: function (query) { return get("/api/library/items" + queryString(query)); },
+    libraryDeleteItem: function (id) { return del("/api/library/items/" + id); },
     libraryRescan: function () { return post("/api/library/rescan"); },
+    libraryReindexMetadata: function () { return post("/api/library/reindex-metadata"); },
     playlists: function () { return get("/api/playlists"); },
+    createPlaylist: function (name) { return post("/api/playlists", { name: name }); },
+    playlist: function (id) { return get("/api/playlists/" + id); },
+    updatePlaylist: function (id, payload) { return put("/api/playlists/" + id, payload || {}); },
+    deletePlaylist: function (id) { return del("/api/playlists/" + id); },
+    duplicatePlaylist: function (id) { return post("/api/playlists/" + id + "/duplicate"); },
+    playlistEntries: function (id) { return get("/api/playlists/" + id + "/entries"); },
+    addPlaylistTrack: function (id, path) { return post("/api/playlists/" + id + "/entries", { path: path }); },
+    removePlaylistEntry: function (playlistId, entryId) { return del("/api/playlists/" + playlistId + "/entries/" + entryId); },
+    reorderPlaylist: function (id, orderIds) { return put("/api/playlists/" + id + "/entries/reorder", { order: orderIds }); },
+    playlistExportUrl: function (id) { return "/api/playlists/" + id + "/export.m3u8"; },
     updatesStatus: function () { return get("/api/updates/status"); },
     checkUpdates: function () { return post("/api/updates/check"); },
     applyUpdate: function () { return post("/api/updates/download-apply"); },

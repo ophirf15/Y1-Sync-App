@@ -12,17 +12,82 @@
     <div class="topbar"><div class="ip" id="ipHeader">Loading...</div><div class="muted" id="statusHeader"></div></div>
     <div class="card">
       <h3>Library Manager</h3>
-      <div class="row"><input id="q" placeholder="Search artist, album, title, path"><select><option>Tracks</option><option>Artists</option><option>Albums</option><option>Folders</option><option>Recently Added</option><option>Duplicate Candidates</option><option>Orphaned Files</option><option>Missing Artwork</option></select></div>
-      <button onclick="rescan()">Rescan Library</button>
-      <table><thead><tr><th>Path</th><th>Artist</th><th>Album</th><th>Title</th><th>Profile</th></tr></thead><tbody id="rows"></tbody></table>
+      <p class="muted" id="scanMeta"></p>
+      <div class="row">
+        <input id="q" placeholder="Search path, title, artist, album" onchange="load()">
+        <label>Sort <select id="sort" onchange="load()">
+          <option value="added_ts">Recently added</option>
+          <option value="title">Title</option>
+          <option value="artist">Artist</option>
+          <option value="album">Album</option>
+          <option value="path">Path</option>
+        </select></label>
+        <label>Order <select id="order" onchange="load()">
+          <option value="desc">Desc</option>
+          <option value="asc">Asc</option>
+        </select></label>
+      </div>
+      <div class="row">
+        <button onclick="rescan()">Rescan Library</button>
+        <button class="secondary" onclick="reindexMeta()">Re-read tags (all)</button>
+      </div>
+      <table><thead><tr><th>Path</th><th>Artist</th><th>Album</th><th>Title</th><th>Profile</th><th></th></tr></thead><tbody id="rows"></tbody></table>
     </div>
   </div>
 </div>
 <script src="/js/api.js"></script><script src="/js/app.js"></script>
 <script>
   y1Ui.setActiveNav("library"); y1Ui.renderTopStatus();
-  function load(){ y1Api.libraryItems().then(function(items){ document.getElementById("rows").innerHTML = y1Ui.toTableRows(items,["path","artist","album","title","profile"]); }); }
-  function rescan(){ y1Api.libraryRescan().then(function(){ alert("Library rescan triggered"); }); }
+  function scanLine() {
+    fetch("/api/library/scan-status").then(function (r) { return r.json(); }).then(function (s) {
+      var el = document.getElementById("scanMeta");
+      if (el && s.last_scan_ts) el.textContent = "Last rescan: " + new Date(s.last_scan_ts).toLocaleString() + " — " + (s.last_scan_count || 0) + " files";
+    });
+  }
+  function load() {
+    var q = document.getElementById("q").value.trim();
+    var sort = document.getElementById("sort").value;
+    var order = document.getElementById("order").value;
+    y1Api.libraryItems({ q: q, sort: sort, order: order }).then(function (items) {
+      var html = "";
+      for (var i = 0; i < items.length; i++) {
+        var it = items[i];
+        html += "<tr>";
+        html += "<td>" + escapeHtml(it.path) + "</td>";
+        html += "<td>" + escapeHtml(it.artist) + "</td>";
+        html += "<td>" + escapeHtml(it.album) + "</td>";
+        html += "<td>" + escapeHtml(it.title) + "</td>";
+        html += "<td>" + escapeHtml(it.profile) + "</td>";
+        html += "<td><button class='danger' onclick='del(" + it.id + ")'>Delete</button></td>";
+        html += "</tr>";
+      }
+      document.getElementById("rows").innerHTML = html || "<tr><td colspan='6' class='muted'>No tracks</td></tr>";
+    });
+    scanLine();
+  }
+  function escapeHtml(s) {
+    if (s === undefined || s === null) return "";
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;");
+  }
+  function del(id) {
+    if (!confirm("Delete this track from the library and disk?")) return;
+    y1Api.libraryDeleteItem(id).then(function (r) {
+      if (r.ok === false) alert(r.error || "Delete failed");
+      load();
+    });
+  }
+  function rescan() {
+    y1Api.libraryRescan().then(function (r) {
+      alert("Rescan: indexed " + (r.indexed != null ? r.indexed : "?"));
+      load();
+    });
+  }
+  function reindexMeta() {
+    y1Api.libraryReindexMetadata().then(function (r) {
+      alert("Reindexed metadata: " + (r.reindexed != null ? r.reindexed : "?"));
+      load();
+    });
+  }
   load();
 </script>
 </body></html>

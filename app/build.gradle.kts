@@ -8,6 +8,10 @@ android {
         version = release(34)
     }
 
+    buildFeatures {
+        buildConfig = true
+    }
+
     defaultConfig {
         applicationId = "io.innoasis.y1syncer"
         minSdk = 17

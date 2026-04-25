@@ -8,14 +8,30 @@
     <button onclick="run('rebuild-sync-index')">Rebuild Sync Index</button>
     <button onclick="run('clean-part-files')">Clean .part Files</button>
     <button onclick="run('prune-empty-folders')">Prune Empty Folders</button>
-    <button onclick="y1Api.libraryRescan().then(ok)">Rescan Media Library</button>
-    <div id="result" class="muted"></div>
+    <button onclick="y1Api.libraryRescan().then(show)">Rescan Media Library</button>
+    <h4 class="muted">Failed downloads (from logs)</h4>
+    <button onclick="loadFailed()">Load failed</button>
+    <pre id="failed" class="muted" style="max-height:120px;overflow:auto"></pre>
+    <h4 class="muted">Incomplete (.part in logs)</h4>
+    <button onclick="loadInc()">Load incomplete</button>
+    <pre id="inc" class="muted" style="max-height:120px;overflow:auto"></pre>
+    <pre id="result" class="muted" style="margin-top:12px"></pre>
   </div>
 </div></div>
 <script src="/js/api.js"></script><script src="/js/app.js"></script>
 <script>
   y1Ui.setActiveNav("maintenance"); y1Ui.renderTopStatus();
-  function ok(){ document.getElementById("result").textContent = "Action sent."; }
-  function run(action){ y1Api.maintenance(action).then(ok); }
+  function show(j) { document.getElementById("result").textContent = JSON.stringify(j, null, 2); }
+  function run(action) { y1Api.maintenance(action).then(show); }
+  function loadFailed() {
+    y1Api.failedDownloads().then(function (arr) {
+      document.getElementById("failed").textContent = JSON.stringify(arr, null, 2);
+    });
+  }
+  function loadInc() {
+    y1Api.incompleteDownloads().then(function (arr) {
+      document.getElementById("inc").textContent = JSON.stringify(arr, null, 2);
+    });
+  }
 </script>
 </body></html>

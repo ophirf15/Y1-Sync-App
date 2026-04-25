@@ -6,17 +6,42 @@
 </div><div class="content"><div class="topbar"><div class="ip" id="ipHeader">Loading...</div><div class="muted" id="statusHeader"></div></div>
   <div class="card"><h3>Web Bundle Updates</h3>
     <div id="updateStatus" class="muted"></div>
+    <div id="apkLine" style="margin:8px 0"></div>
     <button onclick="check()">Check Now</button>
     <button onclick="apply()">Download/Apply Update</button>
     <button class="secondary" onclick="restartServer()">Restart Server</button>
     <button class="secondary" onclick="revert()">Revert to Bundled</button>
+    <button class="secondary" onclick="openApk()" id="apkBtn" style="display:none">Open APK download</button>
   </div>
 </div></div>
 <script src="/js/api.js"></script><script src="/js/app.js"></script>
 <script>
   y1Ui.setActiveNav("updates"); y1Ui.renderTopStatus();
-  function refresh(){ y1Api.updatesStatus().then(function(s){ document.getElementById("updateStatus").textContent = "App " + s.app_version + " | Active bundle " + s.active_bundle_version + " | URL " + s.manifest_url + " | Last check " + s.last_check; }); }
-  function check(){ y1Api.checkUpdates().then(function(resp){ alert("Update check complete: " + JSON.stringify(resp)); refresh(); }); }
+  var lastApkUrl = "";
+  var lastReleaseUrl = "";
+  function refresh(){
+    y1Api.updatesStatus().then(function(s){
+      var t = "App " + s.app_version + " | Active bundle " + s.active_bundle_version + " | Manifest " + s.manifest_url;
+      if (s.last_bundle_check_ts) t += " | Last bundle check " + new Date(s.last_bundle_check_ts).toLocaleString();
+      document.getElementById("updateStatus").textContent = t;
+      var apk = document.getElementById("apkLine");
+      var btn = document.getElementById("apkBtn");
+      lastApkUrl = s.apk_download_url || "";
+      lastReleaseUrl = s.latest_release_url || "";
+      if (s.apk_update_available && lastApkUrl) {
+        apk.textContent = "APK update available. Release: " + (lastReleaseUrl || "");
+        btn.style.display = "inline-block";
+      } else {
+        apk.textContent = s.github_release && s.github_release.tag_name ? ("Latest GitHub tag: " + s.github_release.tag_name) : "No GitHub release info (offline or rate limited).";
+        btn.style.display = (lastApkUrl || lastReleaseUrl) ? "inline-block" : "none";
+      }
+    });
+  }
+  function openApk() {
+    if (lastApkUrl) window.open(lastApkUrl, "_blank");
+    else if (lastReleaseUrl) window.open(lastReleaseUrl, "_blank");
+  }
+  function check(){ y1Api.checkUpdates().then(function(resp){ alert("Update check: " + JSON.stringify(resp)); refresh(); }); }
   function apply(){ y1Api.applyUpdate().then(function(resp){ alert(resp.applied ? ("Applied version " + resp.version) : ("Apply failed: " + (resp.error || "unknown"))); refresh(); }); }
   function restartServer(){ y1Api.restartServer().then(function(resp){ alert(resp.restarted ? "Server restarted." : "Server restart skipped/failed."); refresh(); }); }
   function revert(){ y1Api.revertBundled().then(function(){ alert("Reverted to bundled UI"); refresh(); }); }

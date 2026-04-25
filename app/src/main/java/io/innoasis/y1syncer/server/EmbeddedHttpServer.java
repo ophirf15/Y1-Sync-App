@@ -29,7 +29,8 @@ public class EmbeddedHttpServer extends NanoHTTPD {
         if (uri.startsWith("/api/")) {
             try {
                 ApiResponse response = apiRouter.handle(session.getMethod().name(), uri, session.getParms(), extractBody(session));
-                return newFixedLengthResponse(Response.Status.lookup(response.status), "application/json", response.body);
+                String mime = response.contentType != null ? response.contentType : "application/json";
+                return newFixedLengthResponse(Response.Status.lookup(response.status), mime, response.body);
             } catch (Throwable t) {
                 Log.e(TAG, "API error: " + uri, t);
                 return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "application/json",
