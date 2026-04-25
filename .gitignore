@@ -9,7 +9,27 @@
 /.idea/assetWizardSettings.xml
 .DS_Store
 /build
+/app/build
+/app/release/
 /captures
 .externalNativeBuild
 .cxx
 local.properties
+
+# Android Studio / IntelliJ
+.idea/
+
+# Kotlin/Java build outputs
+out/
+*.class
+
+# APK/AAB artifacts
+*.apk
+*.ap_
+*.aab
+
+# Signing files / secrets
+*.jks
+*.keystore
+keystore.properties
+README-stage1.md

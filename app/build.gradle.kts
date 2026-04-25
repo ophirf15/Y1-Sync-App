@@ -15,7 +15,7 @@ android {
     defaultConfig {
         applicationId = "io.innoasis.y1syncer"
         minSdk = 17
-        targetSdk = 22
+        targetSdk = 34
         versionCode = 1
         versionName = "0.1.0-stage1"
         multiDexEnabled = true
