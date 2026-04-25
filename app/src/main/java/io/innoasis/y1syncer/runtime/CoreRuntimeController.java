@@ -2,6 +2,8 @@ package io.innoasis.y1syncer.runtime;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.net.wifi.WifiManager;
+import android.os.PowerManager;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -38,6 +40,7 @@ public class CoreRuntimeController {
             "https://raw.githubusercontent.com/ophirf15/Y1-Sync-App/main/docs/web-bundle/manifest.json";
 
     private static final int DEFAULT_PORT = 8081;
+    private static final long STALE_SYNC_TIMEOUT_MS = 10 * 60 * 1000L;
     private static final String PREFS_NAME = "runtime_prefs";
     private static final String KEY_SERVER_PORT = "server_port";
     private static final String KEY_MANIFEST_URL = "manifest_url";
@@ -81,7 +84,7 @@ public class CoreRuntimeController {
         this.playlistRepository = new PlaylistRepository(dbHelper);
         this.syncStateRepository = new SyncStateRepository(dbHelper);
         this.bundleStorage = new BundleStorage(appContext, updateBundleRepository);
-        this.webBundleUpdateManager = new WebBundleUpdateManager(bundleStorage, updateBundleRepository, logRepository);
+        this.webBundleUpdateManager = new WebBundleUpdateManager(bundleStorage, appContext, updateBundleRepository, logRepository);
         this.storageBrowser = new StorageBrowser(appContext);
         this.libraryIndexer = new LibraryIndexer(dbHelper);
         this.syncOrchestrator = new SyncOrchestrator(appContext, logRepository, profileRepository, storageBrowser, libraryIndexer, syncStateRepository, new SyncProgressListener() {
@@ -198,8 +201,10 @@ public class CoreRuntimeController {
 
     public void syncNow(String trigger) {
         synchronized (syncStatus) {
+            resetStaleRunningSyncLocked(trigger);
             if ("running".equals(syncStatus.state)) {
                 lastSyncStatus = "sync already running";
+                logRepository.addLog("WARN", "Sync trigger ignored (" + trigger + "): sync already running");
                 return;
             }
             syncStatus.state = "running";
@@ -208,6 +213,7 @@ public class CoreRuntimeController {
             syncStatus.lastError = "";
             syncStatus.failedDetails = "";
         }
+        logRepository.addLog("INFO", "Sync requested trigger=" + trigger);
         runSyncAsync(trigger, 0);
     }
 
@@ -215,13 +221,49 @@ public class CoreRuntimeController {
         Thread t = new Thread(new Runnable() {
             @Override
             public void run() {
-                String summary;
-                if (forcedProfileId > 0) {
-                    summary = syncOrchestrator.syncProfileById(forcedProfileId);
-                } else {
-                    summary = syncOrchestrator.syncNow(null);
+                PowerManager.WakeLock wakeLock = null;
+                WifiManager.WifiLock wifiLock = null;
+                try {
+                    PowerManager pm = (PowerManager) appContext.getSystemService(Context.POWER_SERVICE);
+                    if (pm != null) {
+                        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "y1syncer:sync");
+                        wakeLock.setReferenceCounted(false);
+                        wakeLock.acquire(30 * 60 * 1000L);
+                    }
+                    WifiManager wm = (WifiManager) appContext.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+                    if (wm != null) {
+                        wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "y1syncer:wifi-sync");
+                        wifiLock.setReferenceCounted(false);
+                        wifiLock.acquire();
+                    }
+                    logRepository.addLog("INFO", "Sync wake locks acquired (" + trigger + ")");
+
+                    String summary;
+                    if (forcedProfileId > 0) {
+                        summary = syncOrchestrator.syncProfileById(forcedProfileId);
+                    } else {
+                        summary = syncOrchestrator.syncNow(null);
+                    }
+                    lastSyncStatus = "[" + trigger + "] " + summary;
+                } catch (Throwable t) {
+                    String msg = t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage();
+                    logRepository.addLog("ERROR", "Sync thread crashed (" + trigger + "): " + msg);
+                    synchronized (syncStatus) {
+                        syncStatus.state = "error";
+                        syncStatus.lastError = msg;
+                        syncStatus.summary = "";
+                        syncStatus.updatedAt = System.currentTimeMillis();
+                    }
+                    lastSyncStatus = "[" + trigger + "] error: " + msg;
+                } finally {
+                    if (wifiLock != null && wifiLock.isHeld()) {
+                        wifiLock.release();
+                    }
+                    if (wakeLock != null && wakeLock.isHeld()) {
+                        wakeLock.release();
+                    }
+                    logRepository.addLog("INFO", "Sync wake locks released (" + trigger + ")");
                 }
-                lastSyncStatus = "[" + trigger + "] " + summary;
             }
         }, "sync-runner");
         t.start();
@@ -438,6 +480,7 @@ public class CoreRuntimeController {
             return new JSONObject().put("accepted", false).put("error", "Profile not found");
         }
         synchronized (syncStatus) {
+            resetStaleRunningSyncLocked("profile-" + id);
             if ("running".equals(syncStatus.state)) {
                 return new JSONObject().put("accepted", false).put("error", "sync already running");
             }
@@ -447,8 +490,28 @@ public class CoreRuntimeController {
             syncStatus.lastError = "";
             syncStatus.failedDetails = "";
         }
+        logRepository.addLog("INFO", "Sync requested trigger=profile-" + id);
         runSyncAsync("profile-" + id, id);
         return new JSONObject().put("accepted", true);
+    }
+
+    private void resetStaleRunningSyncLocked(String nextTrigger) {
+        if (!"running".equals(syncStatus.state)) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        long lastTouch = syncStatus.updatedAt > 0 ? syncStatus.updatedAt : syncStatus.startedAt;
+        if (lastTouch <= 0 || (now - lastTouch) < STALE_SYNC_TIMEOUT_MS) {
+            return;
+        }
+        String staleMsg = "stale sync state reset after " + ((now - lastTouch) / 1000L) + "s without progress";
+        logRepository.addLog("WARN", staleMsg + " (next trigger=" + nextTrigger + ")");
+        syncStatus.state = "error";
+        syncStatus.lastError = staleMsg;
+        syncStatus.summary = "";
+        syncStatus.currentFile = "";
+        syncStatus.updatedAt = now;
+        lastSyncStatus = staleMsg;
     }
 
     public SyncStatusState getSyncStatusStateCopy() {
@@ -691,7 +754,7 @@ public class CoreRuntimeController {
                 return j;
             }
         }
-        JSONObject rel = GitHubReleaseChecker.fetchLatestRelease();
+        JSONObject rel = GitHubReleaseChecker.fetchLatestRelease(appContext);
         prefs.edit().putLong(KEY_LAST_RELEASE_TS, now).putString(KEY_LAST_RELEASE_JSON, rel.toString()).apply();
         return rel;
     }

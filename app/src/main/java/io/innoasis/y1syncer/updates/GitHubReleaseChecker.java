@@ -1,5 +1,7 @@
 package io.innoasis.y1syncer.updates;
 
+import android.content.Context;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -19,9 +21,9 @@ public final class GitHubReleaseChecker {
     private GitHubReleaseChecker() {
     }
 
-    public static JSONObject fetchLatestRelease() throws JSONException {
+    public static JSONObject fetchLatestRelease(Context context) throws JSONException {
         try {
-            HttpURLConnection conn = (HttpURLConnection) new URL(REPO_LATEST).openConnection();
+            HttpURLConnection conn = UpdateHttp.open(context.getApplicationContext(), REPO_LATEST);
             conn.setConnectTimeout(12000);
             conn.setReadTimeout(15000);
             conn.setRequestMethod("GET");

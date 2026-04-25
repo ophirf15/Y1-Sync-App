@@ -23,15 +23,18 @@ public class WebBundleUpdateManager {
     private static final String TAG = "WebBundleUpdateManager";
 
     private final BundleStorage bundleStorage;
+    private final android.content.Context appContext;
     private final UpdateBundleRepository updateBundleRepository;
     private final LogRepository logRepository;
 
     public WebBundleUpdateManager(
             BundleStorage bundleStorage,
+            android.content.Context appContext,
             UpdateBundleRepository updateBundleRepository,
             LogRepository logRepository
     ) {
         this.bundleStorage = bundleStorage;
+        this.appContext = appContext.getApplicationContext();
         this.updateBundleRepository = updateBundleRepository;
         this.logRepository = logRepository;
     }
@@ -105,7 +108,7 @@ public class WebBundleUpdateManager {
     }
 
     private JSONObject fetchJson(String url) throws Exception {
-        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+        HttpURLConnection conn = UpdateHttp.open(appContext, url);
         conn.setConnectTimeout(15000);
         conn.setReadTimeout(20000);
         conn.setRequestMethod("GET");
@@ -125,7 +128,7 @@ public class WebBundleUpdateManager {
     }
 
     private void downloadToFile(String url, File target) throws Exception {
-        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+        HttpURLConnection conn = UpdateHttp.open(appContext, url);
         conn.setConnectTimeout(15000);
         conn.setReadTimeout(30000);
         conn.setRequestMethod("GET");
