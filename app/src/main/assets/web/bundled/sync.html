@@ -4,13 +4,27 @@
 <body><div class="layout"><div class="sidebar"><h1>Y1 Console</h1>
   <a href="/dashboard.html" data-nav="dashboard">Dashboard</a><a href="/profiles.html" data-nav="profiles">Sync Profiles</a><a href="/library.html" data-nav="library">Library</a><a href="/playlists.html" data-nav="playlists">Playlists</a><a href="/maintenance.html" data-nav="maintenance">Maintenance</a><a href="/updates.html" data-nav="updates">Updates</a><a href="/settings.html" data-nav="settings">Settings/Status</a>
 </div><div class="content"><div class="topbar"><div class="ip" id="ipHeader">Loading...</div><div class="muted" id="statusHeader"></div></div>
-  <div class="card"><h3>Sync Status</h3><div id="syncStatus"></div><button onclick="y1Api.syncNow().then(load)">Run Sync Now</button></div>
-  <div class="card"><h3>Recent Runs</h3><table><thead><tr><th>Profile</th><th>Trigger</th><th>Result</th></tr></thead><tbody id="runs"></tbody></table></div>
+  <div class="card"><h3>Sync Status</h3><div id="syncStatus"></div><div id="syncProgress" class="muted"></div><button onclick="y1Api.syncNow().then(load)">Run Sync Now</button></div>
+  <div class="card"><h3>Recent Runs</h3><table><thead><tr><th>Profile</th><th>Trigger</th><th>Total</th><th>Success</th><th>Failed</th><th>Reason</th></tr></thead><tbody id="runs"></tbody></table></div>
 </div></div>
 <script src="/js/api.js"></script><script src="/js/app.js"></script>
 <script>
   y1Ui.renderTopStatus();
-  function load(){ y1Api.syncStatus().then(function(s){ document.getElementById("syncStatus").textContent = "Running: " + s.running + " | Last: " + s.last_sync; }); y1Api.syncRuns().then(function(r){ document.getElementById("runs").innerHTML = y1Ui.toTableRows(r,["profile","trigger","result"]); }); }
+  function renderStatus(s) {
+    var line = "State: " + (s.state || "idle") + " | Last: " + (s.last_sync || "");
+    if (s.state === "running") line += " | " + (s.current_index || 0) + "/" + (s.total_files || 0) + " " + (s.current_file || "");
+    if (s.state === "error" && s.last_error) line += " | Error: " + s.last_error;
+    document.getElementById("syncStatus").textContent = line;
+    var pct = s.bytes_total > 0 ? Math.floor((100 * s.bytes_done) / s.bytes_total) : 0;
+    document.getElementById("syncProgress").textContent = "Progress: " + pct + "% (" + (s.bytes_done || 0) + "/" + (s.bytes_total || 0) + " bytes)";
+  }
+  function load(){
+    y1Api.syncStatus().then(renderStatus);
+    y1Api.syncRuns().then(function(r){
+      document.getElementById("runs").innerHTML = y1Ui.toTableRows(r,["profile_id","trigger","total_files","success_files","failed_files","reason"]);
+    });
+  }
   load();
+  setInterval(load, 1500);
 </script>
 </body></html>

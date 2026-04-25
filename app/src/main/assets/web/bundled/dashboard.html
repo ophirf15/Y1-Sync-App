@@ -31,6 +31,7 @@
         <button onclick="runAction('/api/library/rescan')">Rescan Library</button>
         <button onclick="runAction('/api/maintenance/rebuild-sync-index')">Rebuild Index</button>
         <button onclick="runAction('/api/updates/check')">Check Updates</button>
+        <div id="syncProgress" class="muted" style="margin-top:8px"></div>
       </div>
     </div>
   </div>
@@ -47,6 +48,24 @@
   y1Api.deviceInfo().then(function (d) {
     document.getElementById("deviceInfo").textContent = d.model + " | Android " + d.android + " | SDK " + d.sdk;
   });
+  function refreshSyncProgress() {
+    y1Api.syncStatus().then(function (s) {
+      var el = document.getElementById("syncProgress");
+      if (!el) return;
+      if (s.state === "running") {
+        var pct = s.bytes_total > 0 ? Math.floor((100 * s.bytes_done) / s.bytes_total) : 0;
+        el.textContent = "Syncing " + (s.current_index || 0) + "/" + (s.total_files || 0) + " (" + pct + "%): " + (s.current_file || "");
+      } else if (s.state === "error") {
+        el.textContent = "Sync error: " + (s.last_error || s.summary || "");
+      } else if (s.state === "done") {
+        el.textContent = "Last: " + (s.summary || "");
+      } else {
+        el.textContent = "";
+      }
+    });
+  }
+  setInterval(refreshSyncProgress, 1500);
+  refreshSyncProgress();
   function runAction(path) {
     fetch(path, { method: "POST" })
       .then(function (r) {

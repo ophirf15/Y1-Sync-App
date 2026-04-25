@@ -14,6 +14,7 @@ import io.innoasis.y1syncer.db.Y1DatabaseHelper;
 import io.innoasis.y1syncer.db.repos.LogRepository;
 import io.innoasis.y1syncer.db.repos.PlaylistRepository;
 import io.innoasis.y1syncer.db.repos.ProfileRepository;
+import io.innoasis.y1syncer.db.repos.SyncStateRepository;
 import io.innoasis.y1syncer.db.repos.UpdateBundleRepository;
 import io.innoasis.y1syncer.library.LibraryIndexer;
 import io.innoasis.y1syncer.scheduler.SyncAlarmScheduler;
@@ -24,6 +25,7 @@ import io.innoasis.y1syncer.smb.SmbBrowser;
 import io.innoasis.y1syncer.smb.SmbConnectionProbe;
 import io.innoasis.y1syncer.storage.StorageBrowser;
 import io.innoasis.y1syncer.sync.SyncOrchestrator;
+import io.innoasis.y1syncer.sync.SyncProgressListener;
 import io.innoasis.y1syncer.updates.BundleStorage;
 import io.innoasis.y1syncer.updates.GitHubReleaseChecker;
 import io.innoasis.y1syncer.updates.WebBundleUpdateManager;
@@ -54,6 +56,7 @@ public class CoreRuntimeController {
     private final LogRepository logRepository;
     private final UpdateBundleRepository updateBundleRepository;
     private final PlaylistRepository playlistRepository;
+    private final SyncStateRepository syncStateRepository;
     private final BundleStorage bundleStorage;
     private final WebBundleUpdateManager webBundleUpdateManager;
     private final SyncOrchestrator syncOrchestrator;
@@ -66,6 +69,7 @@ public class CoreRuntimeController {
     private boolean autoSyncEnabled;
     private String lastSyncStatus = "Never synced";
     private String manifestUrl;
+    private final SyncStatusState syncStatus = new SyncStatusState();
 
     public CoreRuntimeController(Context context) {
         this.appContext = context.getApplicationContext();
@@ -75,11 +79,85 @@ public class CoreRuntimeController {
         this.logRepository = new LogRepository(dbHelper);
         this.updateBundleRepository = new UpdateBundleRepository(dbHelper);
         this.playlistRepository = new PlaylistRepository(dbHelper);
+        this.syncStateRepository = new SyncStateRepository(dbHelper);
         this.bundleStorage = new BundleStorage(appContext, updateBundleRepository);
         this.webBundleUpdateManager = new WebBundleUpdateManager(bundleStorage, updateBundleRepository, logRepository);
         this.storageBrowser = new StorageBrowser(appContext);
         this.libraryIndexer = new LibraryIndexer(dbHelper);
-        this.syncOrchestrator = new SyncOrchestrator(appContext, logRepository, profileRepository, storageBrowser, libraryIndexer);
+        this.syncOrchestrator = new SyncOrchestrator(appContext, logRepository, profileRepository, storageBrowser, libraryIndexer, syncStateRepository, new SyncProgressListener() {
+            @Override
+            public void onSyncStart(long profileId, String profileName, int totalFiles, long totalBytes) {
+                synchronized (syncStatus) {
+                    syncStatus.state = "running";
+                    if (syncStatus.triggerType == null) {
+                        syncStatus.triggerType = "";
+                    }
+                    syncStatus.profileId = profileId;
+                    syncStatus.profileName = profileName == null ? "" : profileName;
+                    syncStatus.totalFiles = totalFiles;
+                    syncStatus.currentIndex = 0;
+                    syncStatus.currentFile = "";
+                    syncStatus.bytesDone = 0L;
+                    syncStatus.bytesTotal = totalBytes;
+                    syncStatus.downloadedFiles = 0;
+                    syncStatus.skippedFiles = 0;
+                    syncStatus.failedFiles = 0;
+                    syncStatus.startedAt = System.currentTimeMillis();
+                    syncStatus.updatedAt = syncStatus.startedAt;
+                    syncStatus.lastError = "";
+                    syncStatus.summary = "";
+                }
+            }
+
+            @Override
+            public void onFileStart(String remotePath, int index, int total, long fileSize) {
+                synchronized (syncStatus) {
+                    syncStatus.currentFile = remotePath == null ? "" : remotePath;
+                    syncStatus.currentIndex = index;
+                    syncStatus.totalFiles = total;
+                    syncStatus.updatedAt = System.currentTimeMillis();
+                }
+            }
+
+            @Override
+            public void onFileResult(String remotePath, boolean downloaded, boolean skipped, String errorMessage, long cumulativeBytesDone) {
+                synchronized (syncStatus) {
+                    syncStatus.bytesDone = cumulativeBytesDone;
+                    if (downloaded) {
+                        syncStatus.downloadedFiles++;
+                    }
+                    if (skipped) {
+                        syncStatus.skippedFiles++;
+                    }
+                    if (!downloaded && !skipped) {
+                        syncStatus.failedFiles++;
+                        if (errorMessage != null && errorMessage.length() > 0) {
+                            syncStatus.lastError = errorMessage;
+                        }
+                    }
+                    syncStatus.updatedAt = System.currentTimeMillis();
+                }
+            }
+
+            @Override
+            public void onSyncDone(int attempted, int downloaded, int skipped, int failed, String summary, String errorMessage) {
+                synchronized (syncStatus) {
+                    syncStatus.state = failed > 0 ? "error" : "done";
+                    syncStatus.totalFiles = attempted;
+                    syncStatus.downloadedFiles = downloaded;
+                    syncStatus.skippedFiles = skipped;
+                    syncStatus.failedFiles = failed;
+                    syncStatus.summary = summary == null ? "" : summary;
+                    syncStatus.updatedAt = System.currentTimeMillis();
+                    if (errorMessage != null && errorMessage.length() > 0) {
+                        syncStatus.lastError = errorMessage;
+                    }
+                }
+                syncStateRepository.appendRun(syncStatus.profileId, syncStatus.triggerType == null ? "" : syncStatus.triggerType, syncStatus.startedAt,
+                        System.currentTimeMillis(), attempted, downloaded + skipped, failed,
+                        errorMessage == null ? "" : errorMessage);
+            }
+        });
         this.syncAlarmScheduler = new SyncAlarmScheduler(appContext);
         this.serverPort = loadServerPort();
         this.manifestUrl = prefs.getString(KEY_MANIFEST_URL, DEFAULT_MANIFEST_URL);
@@ -109,8 +187,33 @@ public class CoreRuntimeController {
     }
 
     public void syncNow(String trigger) {
-        String summary = syncOrchestrator.syncNow(null);
-        lastSyncStatus = "[" + trigger + "] " + summary;
+        synchronized (syncStatus) {
+            if ("running".equals(syncStatus.state)) {
+                lastSyncStatus = "sync already running";
+                return;
+            }
+            syncStatus.state = "running";
+            syncStatus.triggerType = trigger;
+            syncStatus.updatedAt = System.currentTimeMillis();
+            syncStatus.lastError = "";
+        }
+        runSyncAsync(trigger, 0);
+    }
+
+    private void runSyncAsync(final String trigger, final long forcedProfileId) {
+        Thread t = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String summary;
+                if (forcedProfileId > 0) {
+                    summary = syncOrchestrator.syncProfileById(forcedProfileId);
+                } else {
+                    summary = syncOrchestrator.syncNow(null);
+                }
+                lastSyncStatus = "[" + trigger + "] " + summary;
+            }
+        }, "sync-runner");
+        t.start();
     }
 
     public JSONObject checkForBundleUpdates() throws JSONException {
@@ -196,7 +299,17 @@ public class CoreRuntimeController {
         s.serverPort = serverPort;
         s.localIp = NetUtil.getWifiIp(appContext);
         s.currentProfile = "Music";
-        s.lastSyncStatus = lastSyncStatus;
+        synchronized (syncStatus) {
+            if ("running".equals(syncStatus.state)) {
+                s.lastSyncStatus = "Syncing " + syncStatus.currentIndex + "/" + syncStatus.totalFiles + ": " + syncStatus.currentFile;
+            } else if ("error".equals(syncStatus.state) && syncStatus.lastError != null && syncStatus.lastError.length() > 0) {
+                s.lastSyncStatus = "Error: " + syncStatus.lastError;
+            } else if ("done".equals(syncStatus.state) && syncStatus.summary != null && syncStatus.summary.length() > 0) {
+                s.lastSyncStatus = syncStatus.summary;
+            } else {
+                s.lastSyncStatus = lastSyncStatus;
+            }
+        }
         s.autoSyncEnabled = autoSyncEnabled;
         s.storageSummary = StorageUtil.getStorageSummary();
         s.batterySummary = BatteryUtil.getBatterySummary(appContext);
@@ -313,22 +426,69 @@ public class CoreRuntimeController {
         if (profile == null) {
             return new JSONObject().put("accepted", false).put("error", "Profile not found");
         }
-        String summary = syncOrchestrator.syncProfileById(id);
-        lastSyncStatus = "Profile " + id + ": " + summary;
+        synchronized (syncStatus) {
+            if ("running".equals(syncStatus.state)) {
+                return new JSONObject().put("accepted", false).put("error", "sync already running");
+            }
+            syncStatus.state = "running";
+            syncStatus.triggerType = "profile-" + id;
+            syncStatus.updatedAt = System.currentTimeMillis();
+            syncStatus.lastError = "";
+        }
+        runSyncAsync("profile-" + id, id);
         return new JSONObject().put("accepted", true);
     }
 
+    public SyncStatusState getSyncStatusStateCopy() {
+        synchronized (syncStatus) {
+            SyncStatusState c = new SyncStatusState();
+            c.state = syncStatus.state;
+            c.profileId = syncStatus.profileId;
+            c.profileName = syncStatus.profileName;
+            c.triggerType = syncStatus.triggerType;
+            c.currentFile = syncStatus.currentFile;
+            c.currentIndex = syncStatus.currentIndex;
+            c.totalFiles = syncStatus.totalFiles;
+            c.bytesDone = syncStatus.bytesDone;
+            c.bytesTotal = syncStatus.bytesTotal;
+            c.startedAt = syncStatus.startedAt;
+            c.updatedAt = syncStatus.updatedAt;
+            c.downloadedFiles = syncStatus.downloadedFiles;
+            c.skippedFiles = syncStatus.skippedFiles;
+            c.failedFiles = syncStatus.failedFiles;
+            c.lastError = syncStatus.lastError;
+            c.summary = syncStatus.summary;
+            return c;
+        }
+    }
+
     public JSONObject getSyncStatusJson() throws JSONException {
-        return new JSONObject()
-                .put("running", false)
-                .put("last_sync", lastSyncStatus)
-                .put("auto_sync", autoSyncEnabled);
+        synchronized (syncStatus) {
+            return new JSONObject()
+                    .put("running", "running".equals(syncStatus.state))
+                    .put("state", syncStatus.state)
+                    .put("profile_id", syncStatus.profileId)
+                    .put("profile_name", syncStatus.profileName)
+                    .put("trigger", syncStatus.triggerType)
+                    .put("current_file", syncStatus.currentFile)
+                    .put("current_index", syncStatus.currentIndex)
+                    .put("total_files", syncStatus.totalFiles)
+                    .put("bytes_done", syncStatus.bytesDone)
+                    .put("bytes_total", syncStatus.bytesTotal)
+                    .put("downloaded_files", syncStatus.downloadedFiles)
+                    .put("skipped_files", syncStatus.skippedFiles)
+                    .put("failed_files", syncStatus.failedFiles)
+                    .put("started_at", syncStatus.startedAt)
+                    .put("updated_at", syncStatus.updatedAt)
+                    .put("summary", syncStatus.summary)
+                    .put("last_error", syncStatus.lastError)
+                    .put("last_sync", lastSyncStatus)
+                    .put("auto_sync", autoSyncEnabled);
+        }
     }
 
     public JSONArray getSyncRunsJson() throws JSONException {
-        JSONArray runs = new JSONArray();
-        runs.put(new JSONObject().put("profile", "Music").put("trigger", "manual").put("result", "ok"));
-        return runs;
+        return syncStateRepository.getRecentRuns(25);
     }
 
     public JSONObject getLibraryScanStatusJson() throws JSONException {

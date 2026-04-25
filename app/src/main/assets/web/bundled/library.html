@@ -38,6 +38,8 @@
 <script src="/js/api.js"></script><script src="/js/app.js"></script>
 <script>
   y1Ui.setActiveNav("library"); y1Ui.renderTopStatus();
+  var lastItems = [];
+  var playlistCache = [];
   function scanLine() {
     fetch("/api/library/scan-status").then(function (r) { return r.json(); }).then(function (s) {
       var el = document.getElementById("scanMeta");
@@ -49,16 +51,21 @@
     var sort = document.getElementById("sort").value;
     var order = document.getElementById("order").value;
     y1Api.libraryItems({ q: q, sort: sort, order: order }).then(function (items) {
+      lastItems = items || [];
       var html = "";
-      for (var i = 0; i < items.length; i++) {
-        var it = items[i];
+      for (var i = 0; i < lastItems.length; i++) {
+        var it = lastItems[i];
         html += "<tr>";
         html += "<td>" + escapeHtml(it.path) + "</td>";
         html += "<td>" + escapeHtml(it.artist) + "</td>";
         html += "<td>" + escapeHtml(it.album) + "</td>";
         html += "<td>" + escapeHtml(it.title) + "</td>";
         html += "<td>" + escapeHtml(it.profile) + "</td>";
-        html += "<td><button class='danger' onclick='del(" + it.id + ")'>Delete</button></td>";
+        html += "<td>"
+             + "<button class='secondary' onclick='addToPlaylistByIndex(" + i + ")'>Add</button> "
+             + "<button class='secondary' onclick='addAlbumByIndex(" + i + ")'>Add album</button> "
+             + "<button class='danger' onclick='del(" + it.id + ")'>Delete</button>"
+             + "</td>";
         html += "</tr>";
       }
       document.getElementById("rows").innerHTML = html || "<tr><td colspan='6' class='muted'>No tracks</td></tr>";
@@ -86,6 +93,59 @@
     y1Api.libraryReindexMetadata().then(function (r) {
       alert("Reindexed metadata: " + (r.reindexed != null ? r.reindexed : "?"));
       load();
+    });
+  }
+  function choosePlaylist(cb) {
+    y1Api.playlists().then(function (pls) {
+      playlistCache = pls || [];
+      if (!playlistCache.length) {
+        alert("No playlists yet. Create one in Playlists.");
+        return;
+      }
+      var text = "Choose playlist number:\n";
+      for (var i = 0; i < playlistCache.length; i++) {
+        text += (i + 1) + ". " + playlistCache[i].name + "\n";
+      }
+      var pick = prompt(text);
+      if (!pick) return;
+      var idx = parseInt(pick, 10) - 1;
+      if (idx < 0 || idx >= playlistCache.length) return;
+      cb(playlistCache[idx]);
+    });
+  }
+  function addToPlaylistByIndex(itemIndex) {
+    var it = lastItems[itemIndex];
+    if (!it) return;
+    choosePlaylist(function (pl) {
+      y1Api.addPlaylistTrack(pl.id, it.path).then(function (r) {
+        alert(r.ok === false ? ("Failed: " + (r.error || "")) : "Added to " + pl.name);
+      });
+    });
+  }
+  function addAlbumByIndex(itemIndex) {
+    var it = lastItems[itemIndex];
+    if (!it || !it.album) {
+      alert("This track has no album metadata.");
+      return;
+    }
+    var sameAlbumPaths = [];
+    for (var i = 0; i < lastItems.length; i++) {
+      if (String(lastItems[i].album || "") === String(it.album || "")) {
+        sameAlbumPaths.push(lastItems[i].path);
+      }
+    }
+    if (!sameAlbumPaths.length) return;
+    choosePlaylist(function (pl) {
+      var p = Promise.resolve();
+      var added = 0;
+      sameAlbumPaths.forEach(function (path) {
+        p = p.then(function () {
+          return y1Api.addPlaylistTrack(pl.id, path).then(function (r) {
+            if (r && r.ok !== false) added++;
+          });
+        });
+      });
+      p.then(function () { alert("Added " + added + " tracks to " + pl.name); });
     });
   }
   load();

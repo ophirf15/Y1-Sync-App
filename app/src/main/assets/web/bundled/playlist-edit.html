@@ -14,6 +14,7 @@
     </div>
     <div class="row">
       <button onclick="addTrack()">Add track (absolute path)</button>
+      <button onclick="saveOrder()" class="secondary">Save drag order</button>
       <button class="secondary" onclick="exportM3u()">Export M3U8</button>
       <a href="/playlists.html"><button class="secondary">Back</button></a>
     </div>
@@ -23,6 +24,7 @@
 <script src="/js/api.js"></script><script src="/js/app.js"></script>
 <script>
   y1Ui.renderTopStatus();
+  var entryOrder = [];
   var playlistId = (function () {
     var m = /[?&]id=(\d+)/.exec(window.location.search);
     return m ? parseInt(m[1], 10) : 0;
@@ -38,13 +40,16 @@
   function loadEntries() {
     if (!playlistId) return;
     y1Api.playlistEntries(playlistId).then(function (items) {
+      entryOrder = [];
       var html = "";
       for (var i = 0; i < items.length; i++) {
         var e = items[i];
-        html += "<tr><td>" + (i + 1) + "</td><td>" + esc(e.artist) + "</td><td>" + esc(e.album) + "</td><td>" + esc(e.title) + "</td><td>" + esc(e.path) + "</td>";
+        entryOrder.push(e.entry_id);
+        html += "<tr draggable='true' data-entry-id='" + e.entry_id + "'><td>:: " + (i + 1) + "</td><td>" + esc(e.artist) + "</td><td>" + esc(e.album) + "</td><td>" + esc(e.title) + "</td><td>" + esc(e.path) + "</td>";
         html += "<td><button class='danger' onclick='removeEntry(" + e.entry_id + ")'>Remove</button></td></tr>";
       }
       document.getElementById("rows").innerHTML = html || "<tr><td colspan='6' class='muted'>No tracks</td></tr>";
+      wireDnd();
     });
   }
   function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
@@ -83,6 +88,37 @@
   function exportM3u() {
     if (!playlistId) return;
     window.open(y1Api.playlistExportUrl(playlistId), "_blank");
+  }
+  function wireDnd() {
+    var tbody = document.getElementById("rows");
+    if (!tbody) return;
+    var dragged = null;
+    tbody.querySelectorAll("tr[draggable='true']").forEach(function (row) {
+      row.addEventListener("dragstart", function () { dragged = row; });
+      row.addEventListener("dragover", function (ev) { ev.preventDefault(); });
+      row.addEventListener("drop", function (ev) {
+        ev.preventDefault();
+        if (!dragged || dragged === row) return;
+        var rows = Array.prototype.slice.call(tbody.querySelectorAll("tr[draggable='true']"));
+        if (rows.indexOf(dragged) < rows.indexOf(row)) {
+          tbody.insertBefore(dragged, row.nextSibling);
+        } else {
+          tbody.insertBefore(dragged, row);
+        }
+      });
+    });
+  }
+  function saveOrder() {
+    var tbody = document.getElementById("rows");
+    var order = [];
+    tbody.querySelectorAll("tr[draggable='true']").forEach(function (r) {
+      order.push(parseInt(r.getAttribute("data-entry-id"), 10));
+    });
+    y1Api.reorderPlaylist(playlistId, order).then(function (r) {
+      if (r.ok === false) alert("Failed to save order");
+      else alert("Order saved");
+      loadEntries();
+    });
   }
   loadMeta();
   loadEntries();

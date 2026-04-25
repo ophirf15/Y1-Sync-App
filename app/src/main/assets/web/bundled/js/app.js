@@ -1,4 +1,6 @@
 window.y1Ui = (function () {
+  var topPollTimer = null;
+
   function setActiveNav(page) {
     var links = document.querySelectorAll("[data-nav]");
     for (var i = 0; i < links.length; i++) {
@@ -10,16 +12,38 @@ window.y1Ui = (function () {
 
   function renderTopStatus() {
     if (!window.y1Api) return;
-    window.y1Api.status().then(function (status) {
+    function pullOnce() {
+      Promise.all([window.y1Api.status(), window.y1Api.syncStatus()]).then(function (vals) {
+      var status = vals[0] || {};
+      var sync = vals[1] || {};
       var el = document.getElementById("ipHeader");
       if (el) {
         el.textContent = "http://" + status.ip + ":" + status.port;
       }
       var s = document.getElementById("statusHeader");
       if (s) {
-        s.textContent = "Profile: " + status.profile + " | Last sync: " + status.last_sync;
+        var live = status.last_sync || "";
+        if (sync && sync.state === "running") {
+          live = "Syncing " + (sync.current_index || 0) + "/" + (sync.total_files || 0) + ": " + (sync.current_file || "");
+        } else if (sync && sync.state === "error" && sync.last_error) {
+          live = "Error: " + sync.last_error;
+        } else if (sync && sync.state === "done" && sync.summary) {
+          live = sync.summary;
+        }
+        s.textContent = "Profile: " + status.profile + " | Last sync: " + live;
       }
-    });
+      });
+    }
+    pullOnce();
+    if (topPollTimer) {
+      clearInterval(topPollTimer);
+    }
+    topPollTimer = setInterval(pullOnce, 1500);
+    if (typeof window !== "undefined") {
+      window.onbeforeunload = function () {
+        if (topPollTimer) clearInterval(topPollTimer);
+      };
+    }
   }
 
   function toTableRows(items, fields) {
