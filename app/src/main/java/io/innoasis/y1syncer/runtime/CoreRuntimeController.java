@@ -68,6 +68,8 @@ public class CoreRuntimeController {
     private final LibraryIndexer libraryIndexer;
 
     private EmbeddedHttpServer server;
+    private PowerManager.WakeLock serverWakeLock;
+    private WifiManager.WifiLock serverWifiLock;
     private int serverPort;
     private boolean autoSyncEnabled;
     private String lastSyncStatus = "Never synced";
@@ -188,6 +190,7 @@ public class CoreRuntimeController {
         }
         server = new EmbeddedHttpServer(serverPort, new ApiRouter(this), new AssetResolver(appContext, bundleStorage));
         server.start();
+        acquireServerLocks();
         logRepository.addLog("INFO", "Server started on port " + serverPort);
     }
 
@@ -197,6 +200,7 @@ public class CoreRuntimeController {
         }
         server.stop();
         server = null;
+        releaseServerLocks();
         logRepository.addLog("INFO", "Server stopped");
     }
 
@@ -229,7 +233,7 @@ public class CoreRuntimeController {
                     if (pm != null) {
                         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "y1syncer:sync");
                         wakeLock.setReferenceCounted(false);
-                        wakeLock.acquire(30 * 60 * 1000L);
+                        wakeLock.acquire();
                     }
                     WifiManager wm = (WifiManager) appContext.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
                     if (wm != null) {
@@ -352,7 +356,7 @@ public class CoreRuntimeController {
         s.serverRunning = server != null;
         s.serverPort = serverPort;
         s.localIp = NetUtil.getWifiIp(appContext);
-        s.currentProfile = "Music";
+        s.currentProfile = resolveCurrentProfileName();
         synchronized (syncStatus) {
             if ("running".equals(syncStatus.state)) {
                 s.lastSyncStatus = "Syncing " + syncStatus.currentIndex + "/" + syncStatus.totalFiles + ": " + syncStatus.currentFile;
@@ -811,7 +815,32 @@ public class CoreRuntimeController {
     }
 
     public JSONObject smbBrowse(JSONObject body) throws JSONException {
-        return SmbBrowser.browse(body);
+        JSONObject req = body == null ? new JSONObject() : new JSONObject(body.toString());
+        long profileId = req.optLong("profile_id", 0L);
+        if (profileId > 0) {
+            JSONObject p = profileRepository.getProfile(profileId);
+            if (p != null) {
+                if (req.optString("host", "").trim().length() == 0) {
+                    req.put("host", p.optString("host", ""));
+                }
+                if (req.optString("domain", "").length() == 0) {
+                    req.put("domain", p.optString("domain", ""));
+                }
+                if (req.optString("username", "").length() == 0) {
+                    req.put("username", p.optString("username", ""));
+                }
+                if (req.optString("password", "").length() == 0) {
+                    req.put("password", profileRepository.getPasswordEnc(profileId));
+                }
+                if (req.optString("share_name", "").trim().length() == 0) {
+                    req.put("share_name", p.optString("share_name", ""));
+                }
+                if (!req.has("port") || req.optInt("port", 0) <= 0) {
+                    req.put("port", p.optInt("port", 445));
+                }
+            }
+        }
+        return SmbBrowser.browse(req);
     }
 
     private void hydrateLastSyncStatusFromHistory() {
@@ -833,6 +862,54 @@ public class CoreRuntimeController {
             }
         } catch (Exception ignored) {
             // Keep default "Never synced" if history is unavailable/corrupt.
+        }
+    }
+
+    private String resolveCurrentProfileName() {
+        synchronized (syncStatus) {
+            if (syncStatus.profileName != null && syncStatus.profileName.length() > 0) {
+                return syncStatus.profileName;
+            }
+        }
+        try {
+            String name = profileRepository.pickProfileNameForTriggerSync();
+            return name.length() > 0 ? name : "None";
+        } catch (Exception e) {
+            return "Unknown";
+        }
+    }
+
+    private void acquireServerLocks() {
+        try {
+            PowerManager pm = (PowerManager) appContext.getSystemService(Context.POWER_SERVICE);
+            if (pm != null && (serverWakeLock == null || !serverWakeLock.isHeld())) {
+                serverWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "y1syncer:server");
+                serverWakeLock.setReferenceCounted(false);
+                serverWakeLock.acquire();
+            }
+            WifiManager wm = (WifiManager) appContext.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            if (wm != null && (serverWifiLock == null || !serverWifiLock.isHeld())) {
+                serverWifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "y1syncer:wifi-server");
+                serverWifiLock.setReferenceCounted(false);
+                serverWifiLock.acquire();
+            }
+            logRepository.addLog("INFO", "Server wake locks acquired");
+        } catch (Exception e) {
+            logRepository.addLog("WARN", "Server wake lock acquire failed: " + e.getMessage());
+        }
+    }
+
+    private void releaseServerLocks() {
+        try {
+            if (serverWifiLock != null && serverWifiLock.isHeld()) {
+                serverWifiLock.release();
+            }
+            if (serverWakeLock != null && serverWakeLock.isHeld()) {
+                serverWakeLock.release();
+            }
+            logRepository.addLog("INFO", "Server wake locks released");
+        } catch (Exception e) {
+            logRepository.addLog("WARN", "Server wake lock release failed: " + e.getMessage());
         }
     }
 }

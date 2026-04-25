@@ -54,7 +54,16 @@
     });
   }
   function toggleActive(id, active){ (active ? y1Api.enableProfile(id) : y1Api.disableProfile(id)).then(loadProfiles); }
-  function runSync(id){ y1Api.syncProfileNow(id).then(function(){ alert("Sync requested"); }); }
+  function runSync(id){
+    y1Api.syncProfileNow(id).then(function(resp){
+      if (resp && resp.accepted === false) {
+        alert("Sync not started: " + (resp.error || "unknown reason"));
+        return;
+      }
+      alert("Sync requested");
+      y1Ui.renderTopStatus();
+    });
+  }
   loadProfiles();
 </script>
 </body></html>

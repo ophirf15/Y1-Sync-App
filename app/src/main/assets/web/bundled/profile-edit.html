@@ -3,7 +3,7 @@
   <title>Y1 Console - Profile Editor</title><link rel="stylesheet" href="/css/app.css">
   <style>
     .modalBackdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; z-index: 9999; }
-    .modalCard { max-width: 640px; margin: 8vh auto; background: #1b1b1b; color: #eee; border: 1px solid #444; border-radius: 10px; padding: 14px; }
+    .modalCard { max-width: 640px; margin: 8vh auto; background: #1b1b1b; color: #eee; border: 1px solid #444; border-radius: 10px; padding: 14px; max-height: 80vh; overflow-y: auto; }
     .pickerRow { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding: 8px 0; gap: 8px; }
   </style>
 </head>
@@ -47,6 +47,7 @@
   y1Ui.renderTopStatus();
   var profileId = parseInt(new URLSearchParams(location.search).get("id") || "0", 10);
   var smbBrowseState = { share: "", pathInside: "" };
+  var profileHasStoredPassword = false;
 
   function fill(id, value) { var el = document.getElementById(id); if (el) el.value = value == null ? "" : value; }
   function checked(id, value) { var el = document.getElementById(id); if (el) el.checked = !!value; }
@@ -79,6 +80,11 @@
         html += "<option value='" + roots[i].path + "'>" + roots[i].type + " - " + roots[i].path + "</option>";
       }
       select.innerHTML = html;
+      if (val("local_root_type") === "SDCARD" && roots.length > 1) {
+        select.selectedIndex = 1;
+      } else if (roots.length > 0) {
+        select.selectedIndex = 0;
+      }
     });
   }
 
@@ -102,6 +108,7 @@
     fill("storagePath", items[idx].relative_path);
     fill("local_destination", items[idx].relative_path);
     closePickerModal();
+    if (profileId) saveProfile();
   }
 
   function gatherPayload() {
@@ -146,6 +153,7 @@
 
   function smbPayload(share, pathInside) {
     return {
+      profile_id: profileId || 0,
       host: val("host"),
       port: parseInt(val("port") || "445", 10),
       domain: val("domain"),
@@ -199,6 +207,7 @@
     fill("remote_root_path", smbBrowseState.pathInside ? ("/" + smbBrowseState.pathInside.replace(/\\/g, "/")) : "/");
     feedback("SMB path applied. Click Save Profile.");
     closePickerModal();
+    if (profileId) saveProfile();
   }
 
   function saveProfile() {
@@ -223,10 +232,16 @@
       fill("name", p.name); fill("protocol", p.protocol); fill("host", p.host); fill("port", p.port);
       fill("share_name", p.share_name); fill("remote_root_path", p.remote_root_path); fill("username", p.username);
       fill("domain", p.domain); fill("local_root_type", p.local_root_type); fill("local_destination", p.local_destination);
+      fill("storagePath", p.local_destination);
       fill("allowed_types", p.allowed_types); fill("approved_ssids", p.approved_ssids); fill("battery_threshold", p.battery_threshold);
       fill("retry_count", p.retry_count); fill("timeout_sec", p.timeout_sec); fill("max_parallel_downloads", p.max_parallel_downloads);
       fill("temp_extension", p.temp_extension);
       checked("include_subfolders", p.include_subfolders); checked("charging_only", p.charging_only); checked("mirror_delete", p.delete_mode === "MIRROR");
+      profileHasStoredPassword = !!p.has_password;
+      if (profileHasStoredPassword) {
+        var pw = document.getElementById("password");
+        if (pw && !pw.value) pw.placeholder = "Saved (leave blank to keep)";
+      }
     });
   } else {
     feedback("No profile id. Open from Profiles page.");

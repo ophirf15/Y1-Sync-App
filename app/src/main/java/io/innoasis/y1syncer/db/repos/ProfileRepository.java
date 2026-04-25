@@ -154,6 +154,15 @@ public class ProfileRepository {
         return firstActiveSmb != 0 ? firstActiveSmb : firstSmb;
     }
 
+    public String pickProfileNameForTriggerSync() throws JSONException {
+        long id = pickProfileIdForTriggerSync();
+        if (id <= 0) {
+            return "";
+        }
+        JSONObject p = getProfile(id);
+        return p == null ? "" : p.optString("name", "");
+    }
+
     private static int optIntLooseJson(JSONObject o, String key, int def) {
         if (!o.has(key)) {
             return def;
@@ -229,6 +238,7 @@ public class ProfileRepository {
         item.put("temp_extension", getStringSafe(c, "temp_extension"));
         item.put("delete_mode", getStringSafe(c, "delete_mode"));
         item.put("is_active", getIntSafe(c, "is_active", 1) == 1);
+        item.put("has_password", getStringSafe(c, "password_enc").length() > 0);
         item.put("updated_at", getLongSafe(c, "updated_at", 0L));
         return item;
     }
