@@ -5,7 +5,7 @@ public final class DbContract {
     }
 
     public static final String DB_NAME = "y1runtime.db";
-    public static final int DB_VERSION = 1;
+    public static final int DB_VERSION = 3;
 
     public static final String T_PROFILES = "profiles";
     public static final String T_SYNC_STATE = "sync_state";
@@ -14,5 +14,6 @@ public final class DbContract {
     public static final String T_PLAYLISTS = "playlists";
     public static final String T_PLAYLIST_ENTRIES = "playlist_entries";
     public static final String T_UPDATE_BUNDLES = "update_bundles";
+    public static final String T_UPDATE_STATE = "update_state";
     public static final String T_APP_LOGS = "app_logs";
 }

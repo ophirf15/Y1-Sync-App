@@ -5,20 +5,187 @@
   <a href="/dashboard.html">Dashboard</a><a class="active" href="/profiles.html">Sync Profiles</a><a href="/library.html">Library</a><a href="/playlists.html">Playlists</a><a href="/maintenance.html">Maintenance</a><a href="/updates.html">Updates</a><a href="/settings.html">Settings/Status</a>
 </div><div class="content"><div class="topbar"><div class="ip" id="ipHeader">Loading...</div><div class="muted" id="statusHeader"></div></div>
   <div class="card"><h3>Profile Editor</h3>
-    <div class="row"><input placeholder="Profile Name"><select><option>SMB</option><option>WEBDAV (scaffold)</option></select></div>
-    <div class="row"><input placeholder="Host"><input placeholder="Port" value="445"></div>
-    <div class="row"><input placeholder="Share/Base Path"><input placeholder="Remote Root Path"></div>
-    <div class="row"><input placeholder="Username"><input placeholder="Password"></div>
-    <div class="row"><input placeholder="Domain/Workgroup"><input placeholder="Local Destination"></div>
-    <div class="row"><select><option>INTERNAL</option><option>SDCARD</option></select><input placeholder="File Type Filters (csv)"></div>
-    <div class="row"><input placeholder="Allowed SSIDs (csv)"><input placeholder="Battery Threshold %"></div>
-    <div class="row"><input placeholder="Retry Count" value="2"><input placeholder="Timeout Seconds" value="30"></div>
-    <div class="row"><input placeholder="Max Parallel Downloads" value="1"><input placeholder="Temp Extension" value=".part"></div>
-    <label><input type="checkbox"> Include subfolders</label>
-    <label><input type="checkbox"> Charging only</label>
-    <label><input type="checkbox"> Mirror delete (off by default)</label>
-    <div><button>Save Profile</button><button class="secondary">Duplicate</button><button class="danger">Delete</button><button class="secondary">Test Connection</button><button class="secondary">Run Sync</button></div>
+    <div class="row"><input id="name" placeholder="Profile Name"><select id="protocol"><option>SMB</option><option>WEBDAV</option></select></div>
+    <div class="row"><input id="host" placeholder="Host"><input id="port" placeholder="Port" value="445"></div>
+    <div class="row"><input id="share_name" placeholder="Share/Base Path"><input id="remote_root_path" placeholder="Remote Root Path"></div>
+    <div class="row"><input id="smbQuickPath" placeholder="Quick path: 192.168.1.111\Music or \\server\share\folder"><button class="secondary" type="button" onclick="applySmbQuickPath()">Apply path</button><button class="secondary" type="button" onclick="browseSmb()">Browse SMB</button></div>
+    <div class="row"><input id="username" placeholder="Username"><input id="password" placeholder="Password"></div>
+    <div class="row"><input id="domain" placeholder="Domain/Workgroup"><input id="local_destination" placeholder="Local Destination"></div>
+    <div class="row"><select id="local_root_type"><option>INTERNAL</option><option>SDCARD</option></select><input id="allowed_types" placeholder="File Type Filters (csv)"></div>
+    <div class="row"><input id="approved_ssids" placeholder="Allowed SSIDs (csv)"><input id="battery_threshold" placeholder="Battery Threshold %"></div>
+    <div class="row"><input id="retry_count" placeholder="Retry Count" value="2"><input id="timeout_sec" placeholder="Timeout Seconds" value="30"></div>
+    <div class="row"><input id="max_parallel_downloads" placeholder="Max Parallel Downloads" value="1"><input id="temp_extension" placeholder="Temp Extension" value=".part"></div>
+    <div class="row"><select id="storageRoot"></select><input id="storagePath" placeholder="Folder path"><button class="secondary" onclick="browseStorage()">Browse</button></div>
+    <label><input id="include_subfolders" type="checkbox" checked> Include subfolders</label>
+    <label><input id="charging_only" type="checkbox"> Charging only</label>
+    <label><input id="mirror_delete" type="checkbox"> Mirror delete (off by default)</label>
+    <div><button onclick="saveProfile()">Save Profile</button><button class="secondary" onclick="duplicateProfile()">Duplicate</button><button class="danger" onclick="deleteProfile()">Delete</button><button class="secondary" onclick="testConnection()">Test SMB (live)</button><button class="secondary" onclick="runSync()">Run Sync</button></div>
+    <div id="feedback" class="muted"></div>
   </div>
 </div></div>
-<script src="/js/api.js"></script><script src="/js/app.js"></script><script>y1Ui.renderTopStatus();</script>
+<script src="/js/api.js"></script><script src="/js/app.js"></script>
+<script>
+  y1Ui.renderTopStatus();
+  var profileId = parseInt(new URLSearchParams(location.search).get("id") || "0", 10);
+
+  function fill(id, value) { var el = document.getElementById(id); if (el) el.value = value == null ? "" : value; }
+  function checked(id, value) { var el = document.getElementById(id); if (el) el.checked = !!value; }
+  function val(id) { var el = document.getElementById(id); return el ? el.value : ""; }
+  function chk(id) { var el = document.getElementById(id); return el ? el.checked : false; }
+  function feedback(msg) { document.getElementById("feedback").textContent = msg; }
+
+  function loadStorageRoots() {
+    y1Api.storageRoots().then(function (roots) {
+      var select = document.getElementById("storageRoot");
+      if (!Array.isArray(roots)) {
+        select.innerHTML = "<option value=''>Storage unavailable</option>";
+        if (roots && roots.message) feedback(roots.message);
+        return;
+      }
+      var html = "";
+      for (var i = 0; i < roots.length; i++) {
+        html += "<option value='" + roots[i].path + "'>" + roots[i].type + " - " + roots[i].path + "</option>";
+      }
+      select.innerHTML = html;
+    });
+  }
+
+  function browseStorage() {
+    var root = document.getElementById("storageRoot").value;
+    var path = val("storagePath");
+    y1Api.storageList(root, path).then(function(items){
+      if (!items.length) { feedback("No folders found."); return; }
+      var names = [];
+      for (var i=0;i<items.length;i++) names.push((i+1) + ". " + items[i].relative_path);
+      var answer = prompt("Pick folder number:\n" + names.join("\n"), "1");
+      var idx = parseInt(answer || "0", 10) - 1;
+      if (idx >= 0 && idx < items.length) {
+        document.getElementById("storagePath").value = items[idx].relative_path;
+        document.getElementById("local_destination").value = items[idx].relative_path;
+      }
+    });
+  }
+
+  function gatherPayload() {
+    return {
+      name: val("name"),
+      protocol: val("protocol"),
+      host: val("host"),
+      port: parseInt(val("port") || "445", 10),
+      share_name: val("share_name"),
+      remote_root_path: val("remote_root_path"),
+      username: val("username"),
+      password: val("password"),
+      domain: val("domain"),
+      local_root_type: val("local_root_type"),
+      local_destination: val("local_destination"),
+      allowed_types: val("allowed_types"),
+      approved_ssids: val("approved_ssids"),
+      battery_threshold: parseInt(val("battery_threshold") || "0", 10),
+      retry_count: parseInt(val("retry_count") || "2", 10),
+      timeout_sec: parseInt(val("timeout_sec") || "30", 10),
+      max_parallel_downloads: parseInt(val("max_parallel_downloads") || "1", 10),
+      temp_extension: val("temp_extension"),
+      include_subfolders: chk("include_subfolders"),
+      charging_only: chk("charging_only"),
+      mirror_delete: chk("mirror_delete")
+    };
+  }
+
+  function applySmbQuickPath() {
+    var raw = val("smbQuickPath").trim();
+    if (!raw) { feedback("Enter a path like 192.168.1.111\\Music"); return; }
+    raw = raw.replace(/^\\\\+/, "");
+    var parts = raw.split(/[\\/]+/).filter(function (p) { return p.length > 0; });
+    if (!parts.length) return;
+    fill("host", parts[0]);
+    if (parts.length >= 2) {
+      fill("share_name", parts[1]);
+      fill("remote_root_path", parts.length >= 3 ? ("/" + parts.slice(2).join("/")) : "/");
+    }
+    feedback("Filled Host, Share, and Remote path from quick path. Click Save Profile.");
+  }
+
+  function browseSmb() {
+    if (!val("host").trim()) { feedback("Enter Host first."); return; }
+    function payload(share, pathInside) {
+      return {
+        host: val("host"),
+        port: parseInt(val("port") || "445", 10),
+        domain: val("domain"),
+        username: val("username"),
+        password: val("password"),
+        share_name: share,
+        path: pathInside
+      };
+    }
+    function step(share, pathInside) {
+      y1Api.smbBrowse(payload(share, pathInside)).then(function (resp) {
+        if (!resp || !resp.ok) { feedback(resp && resp.message ? resp.message : "SMB browse failed"); return; }
+        var entries = resp.entries || [];
+        if (!entries.length) { feedback(share ? "No subfolders here (or list empty)." : "No shares returned."); return; }
+        var lines = [];
+        var i;
+        if (share) lines.push("0. Use this folder");
+        for (i = 0; i < entries.length; i++) {
+          lines.push((share ? i + 1 : i + 1) + ". " + entries[i].name);
+        }
+        var def = share ? "0" : "1";
+        var ans = prompt((share ? "Folders in " + share + (pathInside ? "/" + pathInside : "") : "Pick a share number") + "\n" + lines.join("\n"), def);
+        if (ans == null) return;
+        var n = parseInt(ans, 10);
+        if (share) {
+          if (n === 0) {
+            fill("share_name", share);
+            fill("remote_root_path", pathInside ? ("/" + pathInside.replace(/\\/g, "/")) : "/");
+            feedback("SMB path applied. Click Save Profile.");
+            return;
+          }
+          if (n < 1 || n > entries.length) return;
+          var sub = entries[n - 1];
+          var next = pathInside ? (pathInside + "/" + sub.name) : sub.name;
+          step(share, next);
+        } else {
+          if (n < 1 || n > entries.length) return;
+          var picked = entries[n - 1];
+          var shareName = picked.relative || picked.name;
+          step(shareName, "");
+        }
+      });
+    }
+    step("", "");
+  }
+
+  function saveProfile() {
+    if (!profileId) { feedback("No profile ID"); return; }
+    y1Api.updateProfile(profileId, gatherPayload()).then(function (resp) {
+      if (resp && resp.error) { feedback("Save failed: " + resp.error); return; }
+      feedback(resp && resp.updated ? "Profile saved." : "Save failed (nothing updated). Check connection to device.");
+    });
+  }
+  function duplicateProfile() { if (!profileId) return; y1Api.duplicateProfile(profileId).then(function(resp){ if(resp.id){ location.href="/profile-edit.html?id="+resp.id; }}); }
+  function deleteProfile() { if (!profileId) return; if(!confirm("Delete profile?")) return; y1Api.deleteProfile(profileId).then(function(){ location.href="/profiles.html"; }); }
+  function testConnection() {
+    if (!profileId) return;
+    y1Api.testProfile(profileId, gatherPayload()).then(function (resp) {
+      feedback(resp.message || (resp.ok ? "Connection OK" : "Connection failed"));
+    });
+  }
+  function runSync() { if (!profileId) return; y1Api.syncProfileNow(profileId).then(function(){ feedback("Sync requested."); }); }
+
+  if (profileId) {
+    y1Api.profile(profileId).then(function(p){
+      fill("name", p.name); fill("protocol", p.protocol); fill("host", p.host); fill("port", p.port);
+      fill("share_name", p.share_name); fill("remote_root_path", p.remote_root_path); fill("username", p.username);
+      fill("domain", p.domain); fill("local_root_type", p.local_root_type); fill("local_destination", p.local_destination);
+      fill("allowed_types", p.allowed_types); fill("approved_ssids", p.approved_ssids); fill("battery_threshold", p.battery_threshold);
+      fill("retry_count", p.retry_count); fill("timeout_sec", p.timeout_sec); fill("max_parallel_downloads", p.max_parallel_downloads);
+      fill("temp_extension", p.temp_extension);
+      checked("include_subfolders", p.include_subfolders); checked("charging_only", p.charging_only); checked("mirror_delete", p.delete_mode === "MIRROR");
+    });
+  } else {
+    feedback("No profile id. Open from Profiles page.");
+  }
+  loadStorageRoots();
+</script>
 </body></html>

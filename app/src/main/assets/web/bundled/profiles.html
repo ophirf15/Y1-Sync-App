@@ -17,16 +17,44 @@
     <div class="card">
       <h3>Profiles</h3>
       <button onclick="createProfile()">Create Profile</button>
-      <a href="/profile-edit.html"><button class="secondary">Open Editor</button></a>
-      <table><thead><tr><th>Name</th><th>Protocol</th><th>Host</th><th>Root</th><th>Local</th><th>Active</th></tr></thead><tbody id="rows"></tbody></table>
+      <table><thead><tr><th>Name</th><th>Protocol</th><th>Host</th><th>Root</th><th>Local</th><th>Active</th><th>Actions</th></tr></thead><tbody id="rows"></tbody></table>
     </div>
   </div>
 </div>
 <script src="/js/api.js"></script><script src="/js/app.js"></script>
 <script>
   y1Ui.setActiveNav("profiles"); y1Ui.renderTopStatus();
-  function loadProfiles(){ y1Api.profiles().then(function(list){ document.getElementById("rows").innerHTML = y1Ui.toTableRows(list,["name","protocol","host","remote_root_path","local_destination","is_active"]); }); }
-  function createProfile(){ y1Api.createProfile().then(function(){ loadProfiles(); alert("Profile created"); }); }
+  function loadProfiles(){
+    y1Api.profiles().then(function(list){
+      var html = "";
+      for (var i = 0; i < list.length; i++) {
+        var p = list[i];
+        html += "<tr>";
+        html += "<td>" + (p.name || "") + "</td>";
+        html += "<td>" + (p.protocol || "") + "</td>";
+        html += "<td>" + (p.host || "") + ":" + (p.port || "") + "</td>";
+        html += "<td>" + (p.remote_root_path || "") + "</td>";
+        html += "<td>" + (p.local_destination || "") + "</td>";
+        html += "<td>" + (p.is_active ? "Yes" : "No") + "</td>";
+        html += "<td><a href='/profile-edit.html?id=" + p.id + "'><button>Edit</button></a>";
+        html += "<button class='secondary' onclick='toggleActive(" + p.id + "," + (!p.is_active) + ")'>" + (p.is_active ? "Disable" : "Enable") + "</button>";
+        html += "<button class='secondary' onclick='runSync(" + p.id + ")'>Sync</button></td>";
+        html += "</tr>";
+      }
+      document.getElementById("rows").innerHTML = html || "<tr><td colspan='7' class='muted'>No profiles</td></tr>";
+    });
+  }
+  function createProfile(){
+    y1Api.createProfile({ name: "Profile " + Date.now(), protocol: "SMB", host: "", remote_root_path: "/", local_root_type: "SDCARD", local_destination: "Music" }).then(function(resp){
+      if (resp && resp.id) {
+        location.href = "/profile-edit.html?id=" + resp.id;
+      } else {
+        loadProfiles();
+      }
+    });
+  }
+  function toggleActive(id, active){ (active ? y1Api.enableProfile(id) : y1Api.disableProfile(id)).then(loadProfiles); }
+  function runSync(id){ y1Api.syncProfileNow(id).then(function(){ alert("Sync requested"); }); }
   loadProfiles();
 </script>
 </body></html>

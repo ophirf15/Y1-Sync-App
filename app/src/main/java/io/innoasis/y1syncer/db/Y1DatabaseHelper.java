@@ -2,6 +2,7 @@ package io.innoasis.y1syncer.db;
 
 import android.content.Context;
 import android.database.sqlite.SQLiteDatabase;
+import android.database.sqlite.SQLiteException;
 import android.database.sqlite.SQLiteOpenHelper;
 
 public class Y1DatabaseHelper extends SQLiteOpenHelper {
@@ -19,11 +20,49 @@ public class Y1DatabaseHelper extends SQLiteOpenHelper {
         db.execSQL("CREATE TABLE playlists (id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL, encoding TEXT DEFAULT 'UTF-8', relative_paths INTEGER DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
         db.execSQL("CREATE TABLE playlist_entries (id INTEGER PRIMARY KEY, playlist_id INTEGER NOT NULL, position INTEGER NOT NULL, media_file_path TEXT NOT NULL)");
         db.execSQL("CREATE TABLE update_bundles (id INTEGER PRIMARY KEY, resource_version TEXT NOT NULL, schema_version TEXT, bundle_path TEXT, checksum_sha256 TEXT, source_manifest_url TEXT, status TEXT NOT NULL, is_active INTEGER DEFAULT 0, notes TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
+        db.execSQL("CREATE TABLE update_state (id INTEGER PRIMARY KEY, update_channel TEXT, manifest_url TEXT, last_check_ts INTEGER, last_check_result TEXT, previous_bundle_version TEXT, previous_bundle_path TEXT, updated_at INTEGER)");
         db.execSQL("CREATE TABLE app_logs (id INTEGER PRIMARY KEY, level TEXT, message TEXT NOT NULL, created_at INTEGER NOT NULL)");
     }
 
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        // Stage 1: no migrations yet.
+        if (oldVersion < 2) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS update_state (id INTEGER PRIMARY KEY, update_channel TEXT, manifest_url TEXT, last_check_ts INTEGER, last_check_result TEXT, previous_bundle_version TEXT, previous_bundle_path TEXT, updated_at INTEGER)");
+        }
+        if (oldVersion < 3) {
+            migrateProfilesMissingColumns(db);
+        }
+    }
+
+    /**
+     * Older installs may have a narrower {@code profiles} table; add columns so reads/updates match current code.
+     */
+    private static void migrateProfilesMissingColumns(SQLiteDatabase db) {
+        tryAddColumn(db, "profiles", "base_path TEXT");
+        tryAddColumn(db, "profiles", "share_name TEXT");
+        tryAddColumn(db, "profiles", "port INTEGER");
+        tryAddColumn(db, "profiles", "username TEXT");
+        tryAddColumn(db, "profiles", "password_enc TEXT");
+        tryAddColumn(db, "profiles", "domain TEXT");
+        tryAddColumn(db, "profiles", "approved_ssids TEXT");
+        tryAddColumn(db, "profiles", "schedule_mode TEXT");
+        tryAddColumn(db, "profiles", "charging_only INTEGER");
+        tryAddColumn(db, "profiles", "battery_threshold INTEGER");
+        tryAddColumn(db, "profiles", "max_parallel_downloads INTEGER");
+        tryAddColumn(db, "profiles", "retry_count INTEGER");
+        tryAddColumn(db, "profiles", "timeout_sec INTEGER");
+        tryAddColumn(db, "profiles", "delete_mode TEXT");
+        tryAddColumn(db, "profiles", "skip_hidden INTEGER");
+        tryAddColumn(db, "profiles", "temp_extension TEXT");
+        tryAddColumn(db, "profiles", "include_subfolders INTEGER");
+        tryAddColumn(db, "profiles", "allowed_types TEXT");
+    }
+
+    private static void tryAddColumn(SQLiteDatabase db, String table, String columnDef) {
+        try {
+            db.execSQL("ALTER TABLE " + table + " ADD COLUMN " + columnDef);
+        } catch (SQLiteException ignored) {
+            // duplicate column or unsupported definition on this SQLite build
+        }
     }
 }

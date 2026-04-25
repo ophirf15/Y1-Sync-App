@@ -7,16 +7,18 @@
   <div class="card"><h3>Web Bundle Updates</h3>
     <div id="updateStatus" class="muted"></div>
     <button onclick="check()">Check Now</button>
-    <button onclick="apply()">Download/Apply (stub)</button>
+    <button onclick="apply()">Download/Apply Update</button>
+    <button class="secondary" onclick="restartServer()">Restart Server</button>
     <button class="secondary" onclick="revert()">Revert to Bundled</button>
   </div>
 </div></div>
 <script src="/js/api.js"></script><script src="/js/app.js"></script>
 <script>
   y1Ui.setActiveNav("updates"); y1Ui.renderTopStatus();
-  function refresh(){ y1Api.updatesStatus().then(function(s){ document.getElementById("updateStatus").textContent = "App " + s.app_version + " | Active bundle " + s.active_bundle_version + " | URL " + s.manifest_url; }); }
-  function check(){ y1Api.checkUpdates().then(function(){ alert("Update check complete"); refresh(); }); }
-  function apply(){ alert("Bundle download/apply UI scaffolded for Stage 2. API wiring can be expanded in next pass."); }
+  function refresh(){ y1Api.updatesStatus().then(function(s){ document.getElementById("updateStatus").textContent = "App " + s.app_version + " | Active bundle " + s.active_bundle_version + " | URL " + s.manifest_url + " | Last check " + s.last_check; }); }
+  function check(){ y1Api.checkUpdates().then(function(resp){ alert("Update check complete: " + JSON.stringify(resp)); refresh(); }); }
+  function apply(){ y1Api.applyUpdate().then(function(resp){ alert(resp.applied ? ("Applied version " + resp.version) : ("Apply failed: " + (resp.error || "unknown"))); refresh(); }); }
+  function restartServer(){ y1Api.restartServer().then(function(resp){ alert(resp.restarted ? "Server restarted." : "Server restart skipped/failed."); refresh(); }); }
   function revert(){ y1Api.revertBundled().then(function(){ alert("Reverted to bundled UI"); refresh(); }); }
   refresh();
 </script>

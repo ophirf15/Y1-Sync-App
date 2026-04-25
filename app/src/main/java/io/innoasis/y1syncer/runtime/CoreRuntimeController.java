@@ -7,6 +7,8 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.util.Map;
+
 import io.innoasis.y1syncer.db.Y1DatabaseHelper;
 import io.innoasis.y1syncer.db.repos.LogRepository;
 import io.innoasis.y1syncer.db.repos.ProfileRepository;
@@ -15,6 +17,10 @@ import io.innoasis.y1syncer.scheduler.SyncAlarmScheduler;
 import io.innoasis.y1syncer.server.ApiRouter;
 import io.innoasis.y1syncer.server.AssetResolver;
 import io.innoasis.y1syncer.server.EmbeddedHttpServer;
+import io.innoasis.y1syncer.smb.SmbBrowser;
+import io.innoasis.y1syncer.smb.SmbConnectionProbe;
+import io.innoasis.y1syncer.library.LibraryIndexer;
+import io.innoasis.y1syncer.storage.StorageBrowser;
 import io.innoasis.y1syncer.sync.SyncOrchestrator;
 import io.innoasis.y1syncer.updates.BundleStorage;
 import io.innoasis.y1syncer.updates.WebBundleUpdateManager;
@@ -36,6 +42,8 @@ public class CoreRuntimeController {
     private final WebBundleUpdateManager webBundleUpdateManager;
     private final SyncOrchestrator syncOrchestrator;
     private final SyncAlarmScheduler syncAlarmScheduler;
+    private final StorageBrowser storageBrowser;
+    private final LibraryIndexer libraryIndexer;
 
     private EmbeddedHttpServer server;
     private int serverPort;
@@ -51,7 +59,9 @@ public class CoreRuntimeController {
         this.updateBundleRepository = new UpdateBundleRepository(dbHelper);
         this.bundleStorage = new BundleStorage(appContext, updateBundleRepository);
         this.webBundleUpdateManager = new WebBundleUpdateManager(bundleStorage, updateBundleRepository, logRepository);
-        this.syncOrchestrator = new SyncOrchestrator(appContext, logRepository);
+        this.storageBrowser = new StorageBrowser(appContext);
+        this.libraryIndexer = new LibraryIndexer(dbHelper);
+        this.syncOrchestrator = new SyncOrchestrator(appContext, logRepository, profileRepository, storageBrowser, libraryIndexer);
         this.syncAlarmScheduler = new SyncAlarmScheduler(appContext);
         this.serverPort = loadServerPort();
         this.profileRepository.ensureDefaultProfile();
@@ -76,12 +86,29 @@ public class CoreRuntimeController {
     }
 
     public void syncNow(String trigger) {
-        syncOrchestrator.syncNow(null);
-        lastSyncStatus = "Last sync trigger: " + trigger + " @ " + System.currentTimeMillis();
+        String summary = syncOrchestrator.syncNow(null);
+        lastSyncStatus = "[" + trigger + "] " + summary;
     }
 
     public JSONObject checkForBundleUpdates() throws JSONException {
         return webBundleUpdateManager.checkForUpdate(manifestUrl);
+    }
+
+    public JSONObject downloadAndApplyBundleUpdate() throws JSONException {
+        return webBundleUpdateManager.downloadAndApply(manifestUrl);
+    }
+
+    public JSONObject restartServerForUpdates() throws JSONException {
+        try {
+            boolean running = server != null;
+            if (running) {
+                stopServer();
+                startServer();
+            }
+            return new JSONObject().put("restarted", running);
+        } catch (Exception e) {
+            return new JSONObject().put("restarted", false).put("error", e.getMessage());
+        }
     }
 
     public void revertBundledUi() {
@@ -182,6 +209,83 @@ public class CoreRuntimeController {
         return new JSONObject().put("created", id > 0).put("id", id);
     }
 
+    public JSONObject getProfileJson(long id) throws JSONException {
+        JSONObject profile = profileRepository.getProfile(id);
+        if (profile == null) {
+            return new JSONObject().put("error", "Profile not found");
+        }
+        return profile;
+    }
+
+    public JSONObject updateProfile(long id, JSONObject payload) throws JSONException {
+        return new JSONObject().put("updated", profileRepository.updateProfile(id, payload));
+    }
+
+    public JSONObject deleteProfile(long id) throws JSONException {
+        return new JSONObject().put("deleted", profileRepository.deleteProfile(id));
+    }
+
+    public JSONObject duplicateProfile(long id) throws JSONException {
+        long newId = profileRepository.duplicateProfile(id);
+        return new JSONObject().put("duplicated", newId > 0).put("id", newId);
+    }
+
+    public JSONObject setProfileActive(long id, boolean active) throws JSONException {
+        return new JSONObject().put("updated", profileRepository.setProfileActive(id, active)).put("is_active", active);
+    }
+
+    public JSONObject testProfileConnection(long id, JSONObject formOverride) throws JSONException {
+        JSONObject profile = profileRepository.getProfile(id);
+        if (profile == null) {
+            return new JSONObject().put("ok", false).put("message", "Profile not found");
+        }
+        JSONObject merged = new JSONObject(profile.toString());
+        mergeProfileOverrides(merged, formOverride);
+        if (merged.optString("host", "").trim().isEmpty()) {
+            return new JSONObject()
+                    .put("ok", false)
+                    .put("message", "Enter a Host (IP or hostname) in the Host field (row under Profile Name).");
+        }
+        if (merged.optString("password", "").isEmpty()) {
+            String stored = profileRepository.getPasswordEnc(id);
+            if (stored != null && stored.length() > 0) {
+                merged.put("password", stored);
+            }
+        }
+        if (!"SMB".equalsIgnoreCase(merged.optString("protocol", "SMB"))) {
+            return new JSONObject()
+                    .put("ok", true)
+                    .put("message", "Host is set. Live SMB connection test runs only when Protocol is SMB.");
+        }
+        return SmbConnectionProbe.probe(merged);
+    }
+
+    private static void mergeProfileOverrides(JSONObject base, JSONObject over) throws JSONException {
+        if (base == null || over == null || over.length() == 0) {
+            return;
+        }
+        JSONArray names = over.names();
+        if (names == null) {
+            return;
+        }
+        for (int i = 0; i < names.length(); i++) {
+            String key = names.getString(i);
+            if (!over.isNull(key)) {
+                base.put(key, over.get(key));
+            }
+        }
+    }
+
+    public JSONObject syncProfileNow(long id) throws JSONException {
+        JSONObject profile = profileRepository.getProfile(id);
+        if (profile == null) {
+            return new JSONObject().put("accepted", false).put("error", "Profile not found");
+        }
+        String summary = syncOrchestrator.syncProfileById(id);
+        lastSyncStatus = "Profile " + id + ": " + summary;
+        return new JSONObject().put("accepted", true);
+    }
+
     public JSONObject getSyncStatusJson() throws JSONException {
         return new JSONObject()
                 .put("running", false)
@@ -200,14 +304,7 @@ public class CoreRuntimeController {
     }
 
     public JSONArray getLibraryItemsJson() throws JSONException {
-        JSONArray arr = new JSONArray();
-        arr.put(new JSONObject()
-                .put("path", "/Music/Demo/Track01.mp3")
-                .put("artist", "Demo Artist")
-                .put("album", "Demo Album")
-                .put("title", "Track 01")
-                .put("profile", "Music"));
-        return arr;
+        return libraryIndexer.queryItemsJson();
     }
 
     public JSONArray getPlaylistsJson() throws JSONException {
@@ -217,9 +314,11 @@ public class CoreRuntimeController {
     }
 
     public JSONObject getUpdatesStatusJson() throws JSONException {
+        JSONObject active = updateBundleRepository.getActiveBundle();
+        String activeVersion = active == null ? "bundled" : active.optString("resource_version", "bundled");
         return new JSONObject()
                 .put("app_version", "0.1.0-stage1")
-                .put("active_bundle_version", "bundled")
+                .put("active_bundle_version", activeVersion)
                 .put("fallback_bundle_version", "bundled")
                 .put("manifest_url", manifestUrl)
                 .put("last_check", "unknown");
@@ -227,6 +326,28 @@ public class CoreRuntimeController {
 
     public JSONObject maintenanceAction(String action) throws JSONException {
         logRepository.addLog("INFO", "Maintenance action: " + action);
+        if ("rescan-library".equals(action)) {
+            try {
+                int n = libraryIndexer.rescanFromProfiles(appContext, profileRepository, storageBrowser);
+                logRepository.addLog("INFO", "Library rescan indexed " + n + " audio files");
+                return new JSONObject().put("ok", true).put("action", action).put("indexed", n);
+            } catch (Exception e) {
+                logRepository.addLog("ERROR", "Library rescan failed: " + e.getMessage());
+                return new JSONObject().put("ok", false).put("action", action).put("error", e.getMessage());
+            }
+        }
         return new JSONObject().put("ok", true).put("action", action);
+    }
+
+    public JSONArray getStorageRootsJson() throws JSONException {
+        return storageBrowser.listRoots();
+    }
+
+    public JSONArray getStorageChildrenJson(Map<String, String> queryParams) throws JSONException {
+        return storageBrowser.listChildren(queryParams);
+    }
+
+    public JSONObject smbBrowse(JSONObject body) throws JSONException {
+        return SmbBrowser.browse(body);
     }
 }

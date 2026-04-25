@@ -9,7 +9,7 @@ import io.innoasis.y1syncer.models.SyncProfile;
 
 public class WebDavRemoteClientStub implements RemoteClient {
     @Override
-    public List<RemoteFileEntry> listFiles(SyncProfile profile) {
+    public List<RemoteFileEntry> listFiles(SyncProfile profile) throws IOException {
         return new ArrayList<RemoteFileEntry>();
     }
 

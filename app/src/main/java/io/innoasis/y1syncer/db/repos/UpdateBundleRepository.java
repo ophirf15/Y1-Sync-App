@@ -4,6 +4,9 @@ import android.content.ContentValues;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import io.innoasis.y1syncer.db.DbContract;
 import io.innoasis.y1syncer.db.Y1DatabaseHelper;
 
@@ -38,6 +41,26 @@ public class UpdateBundleRepository {
                 return c.getString(c.getColumnIndex("bundle_path"));
             }
             return null;
+        } finally {
+            c.close();
+        }
+    }
+
+    public JSONObject getActiveBundle() throws JSONException {
+        SQLiteDatabase db = dbHelper.getReadableDatabase();
+        Cursor c = db.query(DbContract.T_UPDATE_BUNDLES, null, "is_active=1", null, null, null, "id DESC", "1");
+        try {
+            if (!c.moveToFirst()) {
+                return null;
+            }
+            JSONObject json = new JSONObject();
+            json.put("resource_version", c.getString(c.getColumnIndex("resource_version")));
+            json.put("bundle_path", c.getString(c.getColumnIndex("bundle_path")));
+            json.put("checksum_sha256", c.getString(c.getColumnIndex("checksum_sha256")));
+            json.put("source_manifest_url", c.getString(c.getColumnIndex("source_manifest_url")));
+            json.put("status", c.getString(c.getColumnIndex("status")));
+            json.put("updated_at", c.getLong(c.getColumnIndex("updated_at")));
+            return json;
         } finally {
             c.close();
         }
