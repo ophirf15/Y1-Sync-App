@@ -16,7 +16,11 @@
     if (s.state === "error" && s.last_error) line += " | Error: " + s.last_error;
     document.getElementById("syncStatus").textContent = line;
     var pct = s.bytes_total > 0 ? Math.floor((100 * s.bytes_done) / s.bytes_total) : 0;
-    document.getElementById("syncProgress").textContent = "Progress: " + pct + "% (" + (s.bytes_done || 0) + "/" + (s.bytes_total || 0) + " bytes)";
+    var extra = "";
+    if (s.failed_details) {
+      extra = "\nFailed files:\n" + s.failed_details;
+    }
+    document.getElementById("syncProgress").textContent = "Progress: " + pct + "% (" + (s.bytes_done || 0) + "/" + (s.bytes_total || 0) + " bytes)" + extra;
   }
   function load(){
     y1Api.syncStatus().then(renderStatus);

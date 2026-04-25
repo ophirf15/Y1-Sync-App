@@ -88,6 +88,7 @@ window.y1Api = (function () {
     duplicatePlaylist: function (id) { return post("/api/playlists/" + id + "/duplicate"); },
     playlistEntries: function (id) { return get("/api/playlists/" + id + "/entries"); },
     addPlaylistTrack: function (id, path) { return post("/api/playlists/" + id + "/entries", { path: path }); },
+    addPlaylistTracksBulk: function (id, paths) { return post("/api/playlists/" + id + "/entries", { paths: paths || [] }); },
     removePlaylistEntry: function (playlistId, entryId) { return del("/api/playlists/" + playlistId + "/entries/" + entryId); },
     reorderPlaylist: function (id, orderIds) { return put("/api/playlists/" + id + "/entries/reorder", { order: orderIds }); },
     playlistExportUrl: function (id) { return "/api/playlists/" + id + "/export.m3u8"; },

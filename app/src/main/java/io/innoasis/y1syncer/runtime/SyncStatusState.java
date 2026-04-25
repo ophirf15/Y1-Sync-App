@@ -16,5 +16,6 @@ public class SyncStatusState {
     public int skippedFiles;
     public int failedFiles;
     public String lastError = "";
+    public String failedDetails = "";
     public String summary = "";
 }

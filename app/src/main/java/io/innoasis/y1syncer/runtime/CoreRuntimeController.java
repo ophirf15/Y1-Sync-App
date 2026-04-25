@@ -105,6 +105,7 @@ public class CoreRuntimeController {
                     syncStatus.startedAt = System.currentTimeMillis();
                     syncStatus.updatedAt = syncStatus.startedAt;
                     syncStatus.lastError = "";
+                    syncStatus.failedDetails = "";
                     syncStatus.summary = "";
                 }
             }
@@ -133,6 +134,12 @@ public class CoreRuntimeController {
                         syncStatus.failedFiles++;
                         if (errorMessage != null && errorMessage.length() > 0) {
                             syncStatus.lastError = errorMessage;
+                            if (syncStatus.failedDetails.length() < 3000) {
+                                if (syncStatus.failedDetails.length() > 0) {
+                                    syncStatus.failedDetails += "\n";
+                                }
+                                syncStatus.failedDetails += (remotePath == null ? "<unknown>" : remotePath) + " :: " + errorMessage;
+                            }
                         }
                     }
                     syncStatus.updatedAt = System.currentTimeMillis();
@@ -151,6 +158,9 @@ public class CoreRuntimeController {
                     syncStatus.updatedAt = System.currentTimeMillis();
                     if (errorMessage != null && errorMessage.length() > 0) {
                         syncStatus.lastError = errorMessage;
+                        if (syncStatus.failedDetails.length() == 0) {
+                            syncStatus.failedDetails = errorMessage;
+                        }
                     }
                 }
                 syncStateRepository.appendRun(syncStatus.profileId, syncStatus.triggerType == null ? "" : syncStatus.triggerType, syncStatus.startedAt,
@@ -196,6 +206,7 @@ public class CoreRuntimeController {
             syncStatus.triggerType = trigger;
             syncStatus.updatedAt = System.currentTimeMillis();
             syncStatus.lastError = "";
+            syncStatus.failedDetails = "";
         }
         runSyncAsync(trigger, 0);
     }
@@ -434,6 +445,7 @@ public class CoreRuntimeController {
             syncStatus.triggerType = "profile-" + id;
             syncStatus.updatedAt = System.currentTimeMillis();
             syncStatus.lastError = "";
+            syncStatus.failedDetails = "";
         }
         runSyncAsync("profile-" + id, id);
         return new JSONObject().put("accepted", true);
@@ -457,6 +469,7 @@ public class CoreRuntimeController {
             c.skippedFiles = syncStatus.skippedFiles;
             c.failedFiles = syncStatus.failedFiles;
             c.lastError = syncStatus.lastError;
+            c.failedDetails = syncStatus.failedDetails;
             c.summary = syncStatus.summary;
             return c;
         }
@@ -482,6 +495,7 @@ public class CoreRuntimeController {
                     .put("updated_at", syncStatus.updatedAt)
                     .put("summary", syncStatus.summary)
                     .put("last_error", syncStatus.lastError)
+                    .put("failed_details", syncStatus.failedDetails)
                     .put("last_sync", lastSyncStatus)
                     .put("auto_sync", autoSyncEnabled);
         }

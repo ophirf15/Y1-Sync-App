@@ -2,7 +2,13 @@
 <html><head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Y1 Console - Library</title><link rel="stylesheet" href="/css/app.css">
-</head><body><div class="layout">
+</head><body>
+<style>
+  .modalBackdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; z-index: 9999; }
+  .modalCard { max-width: 560px; margin: 8vh auto; background: #1b1b1b; color: #eee; border: 1px solid #444; border-radius: 10px; padding: 14px; }
+  .playlistOption { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding: 8px 0; }
+</style>
+<div class="layout">
   <div class="sidebar"><h1>Y1 Console</h1>
     <a href="/dashboard.html" data-nav="dashboard">Dashboard</a><a href="/profiles.html" data-nav="profiles">Sync Profiles</a>
     <a href="/library.html" data-nav="library">Library</a><a href="/playlists.html" data-nav="playlists">Playlists</a>
@@ -30,8 +36,21 @@
       <div class="row">
         <button onclick="rescan()">Rescan Library</button>
         <button class="secondary" onclick="reindexMeta()">Re-read tags (all)</button>
+        <label><input id="selectAll" type="checkbox" onclick="toggleSelectAll(this.checked)"> Select all</label>
+        <button class="secondary" onclick="bulkAddSelected()">Add selected to playlist</button>
+        <button class="danger" onclick="bulkDeleteSelected()">Delete selected</button>
       </div>
-      <table><thead><tr><th>Path</th><th>Artist</th><th>Album</th><th>Title</th><th>Profile</th><th></th></tr></thead><tbody id="rows"></tbody></table>
+      <table><thead><tr><th></th><th>Path</th><th>Artist</th><th>Album</th><th>Title</th><th>Profile</th><th></th></tr></thead><tbody id="rows"></tbody></table>
+    </div>
+  </div>
+</div>
+<div id="playlistModal" class="modalBackdrop" onclick="if(event.target===this)closePlaylistModal()">
+  <div class="modalCard">
+    <h3 style="margin-top:0">Add to playlist</h3>
+    <p id="playlistModalInfo" class="muted"></p>
+    <div id="playlistModalList"></div>
+    <div class="row" style="margin-top:12px">
+      <button class="secondary" onclick="closePlaylistModal()">Cancel</button>
     </div>
   </div>
 </div>
@@ -39,7 +58,7 @@
 <script>
   y1Ui.setActiveNav("library"); y1Ui.renderTopStatus();
   var lastItems = [];
-  var playlistCache = [];
+  var pendingAddPaths = [];
   function scanLine() {
     fetch("/api/library/scan-status").then(function (r) { return r.json(); }).then(function (s) {
       var el = document.getElementById("scanMeta");
@@ -56,6 +75,7 @@
       for (var i = 0; i < lastItems.length; i++) {
         var it = lastItems[i];
         html += "<tr>";
+        html += "<td><input type='checkbox' class='rowSel' data-id='" + it.id + "' data-path=\"" + escapeHtml(it.path) + "\"></td>";
         html += "<td>" + escapeHtml(it.path) + "</td>";
         html += "<td>" + escapeHtml(it.artist) + "</td>";
         html += "<td>" + escapeHtml(it.album) + "</td>";
@@ -68,7 +88,7 @@
              + "</td>";
         html += "</tr>";
       }
-      document.getElementById("rows").innerHTML = html || "<tr><td colspan='6' class='muted'>No tracks</td></tr>";
+      document.getElementById("rows").innerHTML = html || "<tr><td colspan='7' class='muted'>No tracks</td></tr>";
     });
     scanLine();
   }
@@ -95,32 +115,40 @@
       load();
     });
   }
-  function choosePlaylist(cb) {
+  function openPlaylistModal(pathsToAdd) {
+    pendingAddPaths = pathsToAdd || [];
+    if (!pendingAddPaths.length) return;
     y1Api.playlists().then(function (pls) {
-      playlistCache = pls || [];
+      var playlistCache = pls || [];
       if (!playlistCache.length) {
         alert("No playlists yet. Create one in Playlists.");
         return;
       }
-      var text = "Choose playlist number:\n";
+      document.getElementById("playlistModalInfo").textContent = "Adding " + pendingAddPaths.length + " track(s). Choose destination playlist:";
+      var html = "";
       for (var i = 0; i < playlistCache.length; i++) {
-        text += (i + 1) + ". " + playlistCache[i].name + "\n";
+        var pl = playlistCache[i];
+        html += "<div class='playlistOption'><div>" + escapeHtml(pl.name) + " <span class='muted'>(" + (pl.entries || 0) + " entries)</span></div>"
+             + "<button onclick='confirmAddToPlaylist(" + pl.id + ",\"" + escapeHtml(pl.name).replace(/"/g, "&quot;") + "\")'>Add here</button></div>";
       }
-      var pick = prompt(text);
-      if (!pick) return;
-      var idx = parseInt(pick, 10) - 1;
-      if (idx < 0 || idx >= playlistCache.length) return;
-      cb(playlistCache[idx]);
+      document.getElementById("playlistModalList").innerHTML = html;
+      document.getElementById("playlistModal").style.display = "block";
+    });
+  }
+  function closePlaylistModal() {
+    document.getElementById("playlistModal").style.display = "none";
+    pendingAddPaths = [];
+  }
+  function confirmAddToPlaylist(id, name) {
+    y1Api.addPlaylistTracksBulk(id, pendingAddPaths).then(function (r) {
+      closePlaylistModal();
+      alert(r && r.ok === false ? ("Failed: " + (r.error || "")) : ("Added " + pendingAddPaths.length + " track(s) to " + name));
     });
   }
   function addToPlaylistByIndex(itemIndex) {
     var it = lastItems[itemIndex];
     if (!it) return;
-    choosePlaylist(function (pl) {
-      y1Api.addPlaylistTrack(pl.id, it.path).then(function (r) {
-        alert(r.ok === false ? ("Failed: " + (r.error || "")) : "Added to " + pl.name);
-      });
-    });
+    openPlaylistModal([it.path]);
   }
   function addAlbumByIndex(itemIndex) {
     var it = lastItems[itemIndex];
@@ -135,17 +163,49 @@
       }
     }
     if (!sameAlbumPaths.length) return;
-    choosePlaylist(function (pl) {
-      var p = Promise.resolve();
-      var added = 0;
-      sameAlbumPaths.forEach(function (path) {
-        p = p.then(function () {
-          return y1Api.addPlaylistTrack(pl.id, path).then(function (r) {
-            if (r && r.ok !== false) added++;
-          });
+    openPlaylistModal(sameAlbumPaths);
+  }
+  function getSelectedRows() {
+    var selected = [];
+    document.querySelectorAll(".rowSel:checked").forEach(function (el) {
+      selected.push({
+        id: parseInt(el.getAttribute("data-id"), 10),
+        path: el.getAttribute("data-path")
+      });
+    });
+    return selected;
+  }
+  function toggleSelectAll(checked) {
+    document.querySelectorAll(".rowSel").forEach(function (el) { el.checked = !!checked; });
+  }
+  function bulkAddSelected() {
+    var rows = getSelectedRows();
+    if (!rows.length) {
+      alert("Select at least one track.");
+      return;
+    }
+    var paths = rows.map(function (r) { return r.path; });
+    openPlaylistModal(paths);
+  }
+  function bulkDeleteSelected() {
+    var rows = getSelectedRows();
+    if (!rows.length) {
+      alert("Select at least one track.");
+      return;
+    }
+    if (!confirm("Delete " + rows.length + " selected track(s) from disk and library?")) return;
+    var p = Promise.resolve();
+    var failed = 0;
+    rows.forEach(function (r) {
+      p = p.then(function () {
+        return y1Api.libraryDeleteItem(r.id).then(function (res) {
+          if (res && res.ok === false) failed++;
         });
       });
-      p.then(function () { alert("Added " + added + " tracks to " + pl.name); });
+    });
+    p.then(function () {
+      alert(failed ? ("Deleted with " + failed + " failures.") : "Deleted selected tracks.");
+      load();
     });
   }
   load();

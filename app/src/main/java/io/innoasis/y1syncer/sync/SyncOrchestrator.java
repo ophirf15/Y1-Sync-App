@@ -5,6 +5,7 @@ import android.util.Log;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 import io.innoasis.y1syncer.db.repos.LogRepository;
@@ -96,6 +97,7 @@ public class SyncOrchestrator {
         int ok = 0;
         int skipped = 0;
         int fail = 0;
+        List<String> failedEntries = new ArrayList<String>();
         long bytesDone = 0L;
         String tempExt = p.tempExtension == null ? ".part" : p.tempExtension;
         for (int i = 0; i < files.size(); i++) {
@@ -111,6 +113,7 @@ public class SyncOrchestrator {
                 syncStateRepository.upsertFileState(p.id, p.protocol, entry.remotePath, out.getAbsolutePath(), entry.size, entry.modifiedTs,
                         "mkdirs failed", "failed");
                 fail++;
+                failedEntries.add(entry.remotePath + " :: mkdirs failed");
                 if (progressListener != null) {
                     progressListener.onFileResult(entry.remotePath, false, false, "mkdirs failed", bytesDone);
                 }
@@ -156,6 +159,7 @@ public class SyncOrchestrator {
                 syncStateRepository.upsertFileState(p.id, p.protocol, entry.remotePath, out.getAbsolutePath(), entry.size, entry.modifiedTs,
                         e.getMessage(), "failed");
                 fail++;
+                failedEntries.add(entry.remotePath + " :: " + e.getMessage());
                 if (progressListener != null) {
                     progressListener.onFileResult(entry.remotePath, false, false, e.getMessage(), bytesDone);
                 }
@@ -163,8 +167,23 @@ public class SyncOrchestrator {
         }
         String summary = "files=" + files.size() + " ok=" + ok + " skipped=" + skipped + " fail=" + fail + " -> " + destRoot.getAbsolutePath();
         logRepository.addLog("INFO", "Sync done profile=" + p.name + " " + summary);
+        String failDetail = null;
+        if (fail > 0) {
+            StringBuilder sb = new StringBuilder();
+            int max = Math.min(8, failedEntries.size());
+            for (int i = 0; i < max; i++) {
+                if (i > 0) {
+                    sb.append('\n');
+                }
+                sb.append(failedEntries.get(i));
+            }
+            if (failedEntries.size() > max) {
+                sb.append("\n... and ").append(failedEntries.size() - max).append(" more");
+            }
+            failDetail = sb.toString();
+        }
         if (progressListener != null) {
-            progressListener.onSyncDone(files.size(), ok, skipped, fail, summary, fail > 0 ? "Some files failed" : null);
+            progressListener.onSyncDone(files.size(), ok, skipped, fail, summary, failDetail);
         }
         return summary;
     }
