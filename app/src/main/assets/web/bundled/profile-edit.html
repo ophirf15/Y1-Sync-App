@@ -1,6 +1,12 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Y1 Console - Profile Editor</title><link rel="stylesheet" href="/css/app.css"></head>
+  <title>Y1 Console - Profile Editor</title><link rel="stylesheet" href="/css/app.css">
+  <style>
+    .modalBackdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; z-index: 9999; }
+    .modalCard { max-width: 640px; margin: 8vh auto; background: #1b1b1b; color: #eee; border: 1px solid #444; border-radius: 10px; padding: 14px; }
+    .pickerRow { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding: 8px 0; gap: 8px; }
+  </style>
+</head>
 <body><div class="layout"><div class="sidebar"><h1>Y1 Console</h1>
   <a href="/dashboard.html">Dashboard</a><a class="active" href="/profiles.html">Sync Profiles</a><a href="/library.html">Library</a><a href="/playlists.html">Playlists</a><a href="/maintenance.html">Maintenance</a><a href="/updates.html">Updates</a><a href="/settings.html">Settings/Status</a>
 </div><div class="content"><div class="topbar"><div class="ip" id="ipHeader">Loading...</div><div class="muted" id="statusHeader"></div></div>
@@ -23,16 +29,42 @@
     <div id="feedback" class="muted"></div>
   </div>
 </div></div>
+
+<div id="pickerModal" class="modalBackdrop" onclick="if(event.target===this)closePickerModal()">
+  <div class="modalCard">
+    <h3 id="pickerTitle" style="margin-top:0">Picker</h3>
+    <p id="pickerSubtitle" class="muted"></p>
+    <div id="pickerList"></div>
+    <div class="row" style="margin-top:12px">
+      <button id="pickerUseCurrent" class="secondary" style="display:none" onclick="useCurrentSmbFolder()">Use this folder</button>
+      <button class="secondary" onclick="closePickerModal()">Close</button>
+    </div>
+  </div>
+</div>
+
 <script src="/js/api.js"></script><script src="/js/app.js"></script>
 <script>
   y1Ui.renderTopStatus();
   var profileId = parseInt(new URLSearchParams(location.search).get("id") || "0", 10);
+  var smbBrowseState = { share: "", pathInside: "" };
 
   function fill(id, value) { var el = document.getElementById(id); if (el) el.value = value == null ? "" : value; }
   function checked(id, value) { var el = document.getElementById(id); if (el) el.checked = !!value; }
   function val(id) { var el = document.getElementById(id); return el ? el.value : ""; }
   function chk(id) { var el = document.getElementById(id); return el ? el.checked : false; }
   function feedback(msg) { document.getElementById("feedback").textContent = msg; }
+  function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
+
+  function openPickerModal(title, subtitle, htmlRows, showUseCurrent) {
+    document.getElementById("pickerTitle").textContent = title || "Picker";
+    document.getElementById("pickerSubtitle").textContent = subtitle || "";
+    document.getElementById("pickerList").innerHTML = htmlRows || "";
+    document.getElementById("pickerUseCurrent").style.display = showUseCurrent ? "inline-block" : "none";
+    document.getElementById("pickerModal").style.display = "block";
+  }
+  function closePickerModal() {
+    document.getElementById("pickerModal").style.display = "none";
+  }
 
   function loadStorageRoots() {
     y1Api.storageRoots().then(function (roots) {
@@ -54,16 +86,22 @@
     var root = document.getElementById("storageRoot").value;
     var path = val("storagePath");
     y1Api.storageList(root, path).then(function(items){
-      if (!items.length) { feedback("No folders found."); return; }
-      var names = [];
-      for (var i=0;i<items.length;i++) names.push((i+1) + ". " + items[i].relative_path);
-      var answer = prompt("Pick folder number:\n" + names.join("\n"), "1");
-      var idx = parseInt(answer || "0", 10) - 1;
-      if (idx >= 0 && idx < items.length) {
-        document.getElementById("storagePath").value = items[idx].relative_path;
-        document.getElementById("local_destination").value = items[idx].relative_path;
+      if (!items || !items.length) { feedback("No folders found."); return; }
+      var rows = "";
+      for (var i = 0; i < items.length; i++) {
+        rows += "<div class='pickerRow'><div>" + esc(items[i].relative_path) + "</div>"
+             + "<button onclick='pickStoragePath(" + i + ")'>Use</button></div>";
       }
+      window._storageItems = items;
+      openPickerModal("Pick storage folder", root + (path ? (" / " + path) : ""), rows, false);
     });
+  }
+  function pickStoragePath(idx) {
+    var items = window._storageItems || [];
+    if (idx < 0 || idx >= items.length) return;
+    fill("storagePath", items[idx].relative_path);
+    fill("local_destination", items[idx].relative_path);
+    closePickerModal();
   }
 
   function gatherPayload() {
@@ -106,54 +144,61 @@
     feedback("Filled Host, Share, and Remote path from quick path. Click Save Profile.");
   }
 
+  function smbPayload(share, pathInside) {
+    return {
+      host: val("host"),
+      port: parseInt(val("port") || "445", 10),
+      domain: val("domain"),
+      username: val("username"),
+      password: val("password"),
+      share_name: share,
+      path: pathInside
+    };
+  }
+
   function browseSmb() {
     if (!val("host").trim()) { feedback("Enter Host first."); return; }
-    function payload(share, pathInside) {
-      return {
-        host: val("host"),
-        port: parseInt(val("port") || "445", 10),
-        domain: val("domain"),
-        username: val("username"),
-        password: val("password"),
-        share_name: share,
-        path: pathInside
-      };
+    smbBrowseStep("", "");
+  }
+
+  function smbBrowseStep(share, pathInside) {
+    smbBrowseState.share = share || "";
+    smbBrowseState.pathInside = pathInside || "";
+    y1Api.smbBrowse(smbPayload(share, pathInside)).then(function (resp) {
+      if (!resp || !resp.ok) { feedback(resp && resp.message ? resp.message : "SMB browse failed"); return; }
+      var entries = resp.entries || [];
+      if (!entries.length && !share) { feedback("No shares returned."); return; }
+      if (!entries.length && share) { feedback("No subfolders here. Use 'Use this folder'."); }
+      var rows = "";
+      for (var i = 0; i < entries.length; i++) {
+        rows += "<div class='pickerRow'><div>" + esc(entries[i].name) + "</div>"
+             + "<button onclick='pickSmbEntry(" + i + ")'>Open</button></div>";
+      }
+      window._smbEntries = entries;
+      var subtitle = share ? ("Share: " + share + (pathInside ? (" / " + pathInside) : "")) : "Pick a share";
+      openPickerModal("Browse SMB", subtitle, rows || "<div class='muted'>No folders listed.</div>", !!share);
+    });
+  }
+
+  function pickSmbEntry(idx) {
+    var entries = window._smbEntries || [];
+    if (idx < 0 || idx >= entries.length) return;
+    var picked = entries[idx];
+    if (!smbBrowseState.share) {
+      var shareName = picked.relative || picked.name;
+      smbBrowseStep(shareName, "");
+      return;
     }
-    function step(share, pathInside) {
-      y1Api.smbBrowse(payload(share, pathInside)).then(function (resp) {
-        if (!resp || !resp.ok) { feedback(resp && resp.message ? resp.message : "SMB browse failed"); return; }
-        var entries = resp.entries || [];
-        if (!entries.length) { feedback(share ? "No subfolders here (or list empty)." : "No shares returned."); return; }
-        var lines = [];
-        var i;
-        if (share) lines.push("0. Use this folder");
-        for (i = 0; i < entries.length; i++) {
-          lines.push((share ? i + 1 : i + 1) + ". " + entries[i].name);
-        }
-        var def = share ? "0" : "1";
-        var ans = prompt((share ? "Folders in " + share + (pathInside ? "/" + pathInside : "") : "Pick a share number") + "\n" + lines.join("\n"), def);
-        if (ans == null) return;
-        var n = parseInt(ans, 10);
-        if (share) {
-          if (n === 0) {
-            fill("share_name", share);
-            fill("remote_root_path", pathInside ? ("/" + pathInside.replace(/\\/g, "/")) : "/");
-            feedback("SMB path applied. Click Save Profile.");
-            return;
-          }
-          if (n < 1 || n > entries.length) return;
-          var sub = entries[n - 1];
-          var next = pathInside ? (pathInside + "/" + sub.name) : sub.name;
-          step(share, next);
-        } else {
-          if (n < 1 || n > entries.length) return;
-          var picked = entries[n - 1];
-          var shareName = picked.relative || picked.name;
-          step(shareName, "");
-        }
-      });
-    }
-    step("", "");
+    var next = smbBrowseState.pathInside ? (smbBrowseState.pathInside + "/" + picked.name) : picked.name;
+    smbBrowseStep(smbBrowseState.share, next);
+  }
+
+  function useCurrentSmbFolder() {
+    if (!smbBrowseState.share) return;
+    fill("share_name", smbBrowseState.share);
+    fill("remote_root_path", smbBrowseState.pathInside ? ("/" + smbBrowseState.pathInside.replace(/\\/g, "/")) : "/");
+    feedback("SMB path applied. Click Save Profile.");
+    closePickerModal();
   }
 
   function saveProfile() {
