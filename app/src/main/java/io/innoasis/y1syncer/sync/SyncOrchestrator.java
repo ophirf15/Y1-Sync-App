@@ -142,8 +142,18 @@ public class SyncOrchestrator {
                 if (!part.renameTo(out)) {
                     throw new IOException("Rename failed: " + part.getAbsolutePath());
                 }
-                libraryIndexer.indexFile(p.id, out);
-                MediaScanHelper.scanFile(appContext, out);
+                try {
+                    if (out.length() >= LibraryIndexer.LARGE_FILE_METADATA_THRESHOLD_BYTES) {
+                        libraryIndexer.indexFileLightweight(p.id, out);
+                        logRepository.addLog("INFO", "Large file indexed in lightweight mode: " + entry.remotePath + " (" + out.length() + " bytes)");
+                    } else {
+                        libraryIndexer.indexFile(p.id, out);
+                    }
+                    MediaScanHelper.scanFile(appContext, out);
+                } catch (Throwable t) {
+                    // Keep transfer successful even if metadata/indexing fails on low-memory devices.
+                    logRepository.addLog("WARN", "Post-process skipped for " + entry.remotePath + ": " + summarize(t));
+                }
                 if (entry.modifiedTs > 0) {
                     // align local metadata for future incremental checks
                     out.setLastModified(entry.modifiedTs);
@@ -166,6 +176,19 @@ public class SyncOrchestrator {
                 failedEntries.add(entry.remotePath + " :: " + e.getMessage());
                 if (progressListener != null) {
                     progressListener.onFileResult(entry.remotePath, false, false, e.getMessage(), bytesDone);
+                }
+            } catch (Throwable t) {
+                if (part.exists()) {
+                    part.delete();
+                }
+                String msg = summarize(t);
+                logRepository.addLog("ERROR", "File processing failed " + entry.remotePath + ": " + msg);
+                syncStateRepository.upsertFileState(p.id, p.protocol, entry.remotePath, out.getAbsolutePath(), entry.size, entry.modifiedTs,
+                        msg, "failed");
+                fail++;
+                failedEntries.add(entry.remotePath + " :: " + msg);
+                if (progressListener != null) {
+                    progressListener.onFileResult(entry.remotePath, false, false, msg, bytesDone);
                 }
             }
         }
@@ -224,5 +247,16 @@ public class SyncOrchestrator {
             return false;
         }
         return isSameTimestamp(cached.remoteModifiedTs, entry.modifiedTs);
+    }
+
+    private static String summarize(Throwable t) {
+        if (t == null) {
+            return "unknown";
+        }
+        String m = t.getMessage();
+        if (m != null && m.trim().length() > 0) {
+            return m;
+        }
+        return t.getClass().getSimpleName();
     }
 }

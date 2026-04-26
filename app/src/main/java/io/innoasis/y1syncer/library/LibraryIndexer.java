@@ -23,6 +23,7 @@ import io.innoasis.y1syncer.util.MediaScanHelper;
 
 public class LibraryIndexer {
     private final Y1DatabaseHelper dbHelper;
+    public static final long LARGE_FILE_METADATA_THRESHOLD_BYTES = 128L * 1024L * 1024L;
 
     public LibraryIndexer(Y1DatabaseHelper dbHelper) {
         this.dbHelper = dbHelper;
@@ -31,6 +32,26 @@ public class LibraryIndexer {
     public void indexFile(long profileId, File file) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         ContentValues cv = buildContentValues(profileId, file);
+        db.insertWithOnConflict(DbContract.T_MEDIA_INDEX, null, cv, SQLiteDatabase.CONFLICT_REPLACE);
+    }
+
+    /**
+     * Lightweight index path used for very large files to reduce memory pressure
+     * from full metadata extraction while keeping the file visible in library.
+     */
+    public void indexFileLightweight(long profileId, File file) {
+        SQLiteDatabase db = dbHelper.getWritableDatabase();
+        ContentValues cv = new ContentValues();
+        cv.put("profile_id", profileId);
+        cv.put("file_path", file.getAbsolutePath());
+        cv.put("artist", "");
+        cv.put("album", "");
+        cv.put("title", file.getName());
+        cv.put("track_no", 0);
+        cv.put("duration_ms", 0);
+        cv.put("year", 0);
+        cv.put("added_ts", System.currentTimeMillis());
+        cv.put("modified_ts", file.lastModified());
         db.insertWithOnConflict(DbContract.T_MEDIA_INDEX, null, cv, SQLiteDatabase.CONFLICT_REPLACE);
     }
 
