@@ -103,6 +103,9 @@ public class ApiRouter {
             if ("/api/library/items".equals(uri) && "GET".equals(method)) {
                 return new ApiResponse(200, runtimeController.getLibraryItemsJson(queryParams).toString());
             }
+            if ("/api/library/duplicates".equals(uri) && "GET".equals(method)) {
+                return new ApiResponse(200, runtimeController.getLibraryDuplicatesJson().toString());
+            }
             Matcher libDel = LIBRARY_ITEM_ID_PATTERN.matcher(uri);
             if (libDel.matches() && "DELETE".equals(method)) {
                 long mid = Long.parseLong(libDel.group(1));

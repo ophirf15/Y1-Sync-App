@@ -36,11 +36,14 @@
       <div class="row">
         <button onclick="rescan()">Rescan Library</button>
         <button class="secondary" onclick="reindexMeta()">Re-read tags (all)</button>
+        <button class="secondary" onclick="loadDuplicates()">Find duplicates</button>
         <label><input id="selectAll" type="checkbox" onclick="toggleSelectAll(this.checked)"> Select all</label>
         <button class="secondary" onclick="bulkAddSelected()">Add selected to playlist</button>
         <button class="danger" onclick="bulkDeleteSelected()">Delete selected</button>
       </div>
       <table><thead><tr><th></th><th>Path</th><th>Artist</th><th>Album</th><th>Title</th><th>Profile</th><th></th></tr></thead><tbody id="rows"></tbody></table>
+      <h4 style="margin-top:16px">Detected Duplicates</h4>
+      <div id="dups" class="muted">Run “Find duplicates”.</div>
     </div>
   </div>
 </div>
@@ -206,6 +209,50 @@
     p.then(function () {
       alert(failed ? ("Deleted with " + failed + " failures.") : "Deleted selected tracks.");
       load();
+    });
+  }
+  function loadDuplicates() {
+    var box = document.getElementById("dups");
+    box.textContent = "Scanning duplicates...";
+    y1Api.libraryDuplicates().then(function(groups) {
+      groups = groups || [];
+      if (!groups.length) {
+        box.innerHTML = "<span class='muted'>No duplicates found.</span>";
+        return;
+      }
+      var html = "";
+      for (var i = 0; i < groups.length; i++) {
+        var g = groups[i];
+        html += "<div style='border:1px solid #333;padding:8px;margin:8px 0;border-radius:8px'>";
+        html += "<div><b>" + escapeHtml(g.key_title || "(untitled)") + "</b> — " + escapeHtml(g.key_artist || "(unknown artist)") + " <span class='muted'>(" + (g.count || 0) + " copies)</span></div>";
+        html += "<div class='muted'>Duration: " + Math.floor((g.duration_ms || 0) / 1000) + "s</div>";
+        var items = g.items || [];
+        for (var j = 0; j < items.length; j++) {
+          var it = items[j];
+          var keep = j === 0 ? " <span class='muted'>(newest, keep)</span>" : "";
+          html += "<div style='display:flex;justify-content:space-between;gap:8px;padding:4px 0'>";
+          html += "<div style='word-break:break-all'>" + escapeHtml(it.path || "") + keep + "</div>";
+          if (j > 0) {
+            html += "<button class='danger' onclick='deleteDup(" + parseInt(it.id, 10) + ")'>Delete</button>";
+          } else {
+            html += "<span class='muted'>—</span>";
+          }
+          html += "</div>";
+        }
+        html += "</div>";
+      }
+      box.innerHTML = html;
+    });
+  }
+  function deleteDup(id) {
+    if (!confirm("Delete this duplicate from disk and library?")) return;
+    y1Api.libraryDeleteItem(id).then(function (r) {
+      if (r && r.ok === false) {
+        alert("Delete failed: " + (r.error || ""));
+        return;
+      }
+      load();
+      loadDuplicates();
     });
   }
   load();

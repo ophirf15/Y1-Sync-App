@@ -116,6 +116,74 @@ public class LibraryIndexer {
         }
     }
 
+    /**
+     * Detect likely duplicate tracks by normalized metadata key:
+     * lower(title) + lower(artist) + duration_ms.
+     */
+    public JSONArray queryDuplicateGroupsJson() throws JSONException {
+        SQLiteDatabase db = dbHelper.getReadableDatabase();
+        String groupsSql =
+                "SELECT " +
+                        "LOWER(TRIM(IFNULL(title,''))) AS t, " +
+                        "LOWER(TRIM(IFNULL(artist,''))) AS a, " +
+                        "duration_ms AS d, " +
+                        "COUNT(*) AS c " +
+                "FROM " + DbContract.T_MEDIA_INDEX + " " +
+                "WHERE LENGTH(TRIM(IFNULL(title,''))) > 0 " +
+                "AND duration_ms > 0 " +
+                "GROUP BY t, a, d " +
+                "HAVING COUNT(*) > 1 " +
+                "ORDER BY c DESC, t ASC";
+        Cursor g = db.rawQuery(groupsSql, null);
+        JSONArray out = new JSONArray();
+        try {
+            while (g.moveToNext()) {
+                String t = g.isNull(0) ? "" : g.getString(0);
+                String a = g.isNull(1) ? "" : g.getString(1);
+                int d = g.getInt(2);
+                int c = g.getInt(3);
+
+                JSONArray items = new JSONArray();
+                Cursor m = db.query(
+                        DbContract.T_MEDIA_INDEX,
+                        new String[]{"id", "file_path", "title", "artist", "album", "profile_id"},
+                        "LOWER(TRIM(IFNULL(title,'')))=? AND LOWER(TRIM(IFNULL(artist,'')))=? AND duration_ms=?",
+                        new String[]{t, a, String.valueOf(d)},
+                        null,
+                        null,
+                        "added_ts DESC"
+                );
+                try {
+                    while (m.moveToNext()) {
+                        JSONObject row = new JSONObject();
+                        row.put("id", m.getLong(0));
+                        row.put("path", nullToEmpty(m.getString(1)));
+                        row.put("title", nullToEmpty(m.getString(2)));
+                        row.put("artist", nullToEmpty(m.getString(3)));
+                        row.put("album", nullToEmpty(m.getString(4)));
+                        row.put("profile_id", m.getLong(5));
+                        items.put(row);
+                    }
+                } finally {
+                    m.close();
+                }
+                if (items.length() > 1) {
+                    JSONObject group = new JSONObject();
+                    JSONObject head = items.getJSONObject(0);
+                    group.put("key_title", head.optString("title", t));
+                    group.put("key_artist", head.optString("artist", a));
+                    group.put("duration_ms", d);
+                    group.put("count", c);
+                    group.put("items", items);
+                    out.put(group);
+                }
+            }
+        } finally {
+            g.close();
+        }
+        return out;
+    }
+
     private static String mapSortColumn(String sortKey) {
         if ("title".equalsIgnoreCase(sortKey)) {
             return "m.title";

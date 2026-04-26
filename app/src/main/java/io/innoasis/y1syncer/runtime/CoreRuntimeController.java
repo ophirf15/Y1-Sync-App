@@ -590,6 +590,10 @@ public class CoreRuntimeController {
         return libraryIndexer.queryItemsJson(queryParams);
     }
 
+    public JSONArray getLibraryDuplicatesJson() throws JSONException {
+        return libraryIndexer.queryDuplicateGroupsJson();
+    }
+
     public JSONObject deleteLibraryItem(long mediaId) throws JSONException {
         String err = libraryIndexer.deleteById(mediaId);
         if (err != null) {
