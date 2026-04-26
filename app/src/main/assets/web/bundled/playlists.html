@@ -1,48 +1,89 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Y1 Console - Playlists</title><link rel="stylesheet" href="/css/app.css"></head>
+  <title>Y1 Console - Playlists</title><link rel="stylesheet" href="/css/app.css">
+  <style>
+    .modalBackdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; z-index: 9999; }
+    .modalCard { max-width: 520px; margin: 10vh auto; background: #1b1b1b; color: #eee; border: 1px solid #444; border-radius: 10px; padding: 14px; }
+  </style>
+</head>
 <body><div class="layout"><div class="sidebar"><h1>Y1 Console</h1>
   <a href="/dashboard.html" data-nav="dashboard">Dashboard</a><a href="/profiles.html" data-nav="profiles">Sync Profiles</a><a href="/library.html" data-nav="library">Library</a><a href="/playlists.html" data-nav="playlists">Playlists</a><a href="/maintenance.html" data-nav="maintenance">Maintenance</a><a href="/updates.html" data-nav="updates">Updates</a><a href="/settings.html" data-nav="settings">Settings/Status</a>
 </div><div class="content"><div class="topbar"><div class="ip" id="ipHeader">Loading...</div><div class="muted" id="statusHeader"></div></div>
   <div class="card"><h3>Playlist Manager</h3>
-    <button onclick="createPl()">Create playlist</button>
+    <button onclick="openCreateModal()">Create playlist</button>
+    <span id="msg" class="muted"></span>
     <table><thead><tr><th>Name</th><th>Entries</th><th></th></tr></thead><tbody id="rows"></tbody></table>
   </div>
 </div></div>
+
+<div id="createModal" class="modalBackdrop" onclick="if(event.target===this)closeCreateModal()">
+  <div class="modalCard">
+    <h3 style="margin-top:0">Create playlist</h3>
+    <input id="newPlaylistName" placeholder="Playlist name">
+    <div class="row"><button onclick="createPl()">Create</button><button class="secondary" onclick="closeCreateModal()">Cancel</button></div>
+  </div>
+</div>
+
+<div id="confirmModal" class="modalBackdrop" onclick="if(event.target===this)closeConfirmModal()">
+  <div class="modalCard">
+    <h3 style="margin-top:0">Confirm</h3>
+    <p id="confirmText"></p>
+    <div class="row"><button class="danger" id="confirmOkBtn">Delete</button><button class="secondary" onclick="closeConfirmModal()">Cancel</button></div>
+  </div>
+</div>
+
 <script src="/js/api.js"></script><script src="/js/app.js"></script>
 <script>
   y1Ui.setActiveNav("playlists"); y1Ui.renderTopStatus();
+  var pendingConfirmAction = null;
+  function message(t) { document.getElementById("msg").textContent = t || ""; }
+  function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
   function load() {
     y1Api.playlists().then(function (items) {
       var html = "";
       for (var i = 0; i < items.length; i++) {
         var it = items[i];
-        html += "<tr><td>" + String(it.name) + "</td><td>" + String(it.entries) + "</td>";
+        html += "<tr><td>" + esc(it.name) + "</td><td>" + String(it.entries) + "</td>";
         html += "<td><a href='/playlist-edit.html?id=" + it.id + "'><button class='secondary'>Edit</button></a> ";
         html += "<button class='secondary' onclick='dup(" + it.id + ")'>Duplicate</button> ";
-        html += "<button class='danger' onclick='delPl(" + it.id + ")'>Delete</button></td></tr>";
+        html += "<button class='danger' onclick='askDelete(" + it.id + ",\"" + esc(it.name).replace(/"/g, "&quot;") + "\")'>Delete</button></td></tr>";
       }
       document.getElementById("rows").innerHTML = html || "<tr><td colspan='3' class='muted'>No playlists</td></tr>";
     });
   }
+  function openCreateModal() { document.getElementById("newPlaylistName").value = ""; document.getElementById("createModal").style.display = "block"; }
+  function closeCreateModal() { document.getElementById("createModal").style.display = "none"; }
   function createPl() {
-    var n = prompt("Playlist name?");
-    if (!n) return;
+    var n = document.getElementById("newPlaylistName").value.trim();
+    if (!n) { message("Enter a playlist name."); return; }
     y1Api.createPlaylist(n).then(function (r) {
-      if (!r.ok) alert("Create failed");
+      closeCreateModal();
+      if (!r || r.ok === false) { message("Create failed."); return; }
+      message("Playlist created.");
       load();
     });
   }
   function dup(id) {
     y1Api.duplicatePlaylist(id).then(function (r) {
-      if (!r.ok) alert("Duplicate failed");
+      if (!r || r.ok === false) { message("Duplicate failed."); return; }
+      message("Playlist duplicated.");
       load();
     });
   }
+  function askDelete(id, name) {
+    document.getElementById("confirmText").textContent = "Delete playlist '" + name + "'?";
+    pendingConfirmAction = function () { delPl(id); };
+    document.getElementById("confirmModal").style.display = "block";
+  }
+  function closeConfirmModal() { document.getElementById("confirmModal").style.display = "none"; pendingConfirmAction = null; }
+  document.getElementById("confirmOkBtn").onclick = function () {
+    if (pendingConfirmAction) pendingConfirmAction();
+    closeConfirmModal();
+  };
   function delPl(id) {
-    if (!confirm("Delete this playlist?")) return;
     y1Api.deletePlaylist(id).then(function (r) {
-      if (!r.ok) alert("Delete failed");
+      if (!r || r.ok === false) { message("Delete failed."); return; }
+      message("Playlist deleted.");
       load();
     });
   }

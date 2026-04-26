@@ -78,6 +78,7 @@ window.y1Api = (function () {
     syncRuns: function () { return get("/api/sync/runs"); },
     libraryItems: function (query) { return get("/api/library/items" + queryString(query)); },
     libraryDuplicates: function () { return get("/api/library/duplicates"); },
+    libraryArtwork: function (id) { return get("/api/library/artwork/" + id); },
     libraryDeleteItem: function (id) { return del("/api/library/items/" + id); },
     libraryRescan: function () { return post("/api/library/rescan"); },
     libraryReindexMetadata: function () { return post("/api/library/reindex-metadata"); },

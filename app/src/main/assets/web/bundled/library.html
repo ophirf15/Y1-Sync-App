@@ -5,8 +5,27 @@
 </head><body>
 <style>
   .modalBackdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; z-index: 9999; }
-  .modalCard { max-width: 560px; margin: 8vh auto; background: #1b1b1b; color: #eee; border: 1px solid #444; border-radius: 10px; padding: 14px; }
+  .modalCard { max-width: 560px; margin: 8vh auto; background: #1b1b1b; color: #eee; border: 1px solid #444; border-radius: 10px; padding: 14px; max-height: 80vh; overflow-y: auto; }
   .playlistOption { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding: 8px 0; }
+  .libShell { display:grid; grid-template-columns: 240px 1fr 1.2fr; gap:10px; min-height: 65vh; }
+  .panel { background:#141d27; border:1px solid #2b3948; border-radius:10px; padding:10px; overflow:auto; }
+  .panel h4 { margin:0 0 8px 0; }
+  .artistItem, .songRow { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:8px; border-bottom:1px solid #263341; cursor:pointer; border-radius:6px; }
+  .artistItem:hover, .songRow:hover { background:#1f2b38; }
+  .artistItem.active { background:#29405b; }
+  .albumGrid { display:grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap:10px; }
+  .albumCard { border:1px solid #2c3a49; border-radius:10px; padding:8px; background:#18222d; cursor:pointer; }
+  .albumCard.active { border-color:#5aa9ff; box-shadow:0 0 0 1px #5aa9ff inset; }
+  .thumb { height:92px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:24px; font-weight:bold; color:#e9f2ff; background:linear-gradient(135deg,#355173,#223447); margin-bottom:8px; overflow:hidden; }
+  .thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+  .albumMeta { font-size:12px; color:#9eb0c2; }
+  .songTitle { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; overflow:hidden; }
+  .songMain { display:block; color:#edf2f7; font-weight:600; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .songMeta { display:block; font-size:12px; color:#9eb0c2; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .songActions { display:flex; align-items:center; gap:6px; flex:0 0 auto; white-space:nowrap; }
+  .songCheck { margin:0 2px 0 0; }
+  .dupsWrap > div { border:1px solid #333; border-radius:8px; margin:8px 0; padding:8px; }
+  @media (max-width: 1100px) { .libShell { grid-template-columns: 1fr; } }
 </style>
 <div class="layout">
   <div class="sidebar"><h1>Y1 Console</h1>
@@ -20,223 +39,351 @@
       <h3>Library Manager</h3>
       <p class="muted" id="scanMeta"></p>
       <div class="row">
-        <input id="q" placeholder="Search path, title, artist, album" onchange="load()">
-        <label>Sort <select id="sort" onchange="load()">
-          <option value="added_ts">Recently added</option>
-          <option value="title">Title</option>
-          <option value="artist">Artist</option>
-          <option value="album">Album</option>
-          <option value="path">Path</option>
+        <input id="q" placeholder="Search artist, album, title, path">
+        <label>Sort<select id="sort">
+          <option value="artist">Artist</option><option value="album">Album</option><option value="title">Title</option><option value="added_ts">Recently added</option>
         </select></label>
-        <label>Order <select id="order" onchange="load()">
-          <option value="desc">Desc</option>
-          <option value="asc">Asc</option>
-        </select></label>
+        <label>Order<select id="order"><option value="asc">Asc</option><option value="desc">Desc</option></select></label>
       </div>
       <div class="row">
-        <button onclick="rescan()">Rescan Library</button>
-        <button class="secondary" onclick="reindexMeta()">Re-read tags (all)</button>
-        <button class="secondary" onclick="loadDuplicates()">Find duplicates</button>
-        <label><input id="selectAll" type="checkbox" onclick="toggleSelectAll(this.checked)"> Select all</label>
+        <button onclick="loadLibrary()">Apply</button>
+        <button onclick="rescan()">Resync Library and Index</button>
+        <button class="secondary" onclick="reindexMeta()">Re-read tags</button>
+        <button class="secondary" onclick="toggleSelectVisible(true)">Select visible</button>
+        <button class="secondary" onclick="toggleSelectVisible(false)">Clear visible</button>
         <button class="secondary" onclick="bulkAddSelected()">Add selected to playlist</button>
         <button class="danger" onclick="bulkDeleteSelected()">Delete selected</button>
       </div>
-      <table><thead><tr><th></th><th>Path</th><th>Artist</th><th>Album</th><th>Title</th><th>Profile</th><th></th></tr></thead><tbody id="rows"></tbody></table>
+      <div id="msg" class="muted"></div>
+      <div class="libShell">
+        <div class="panel">
+          <h4>Artists</h4>
+          <div id="artists"></div>
+        </div>
+        <div class="panel">
+          <h4>Albums</h4>
+          <div class="albumGrid" id="albums"></div>
+        </div>
+        <div class="panel">
+          <h4>Songs</h4>
+          <div id="songs"></div>
+        </div>
+      </div>
       <h4 style="margin-top:16px">Detected Duplicates</h4>
-      <div id="dups" class="muted">Run “Find duplicates”.</div>
+      <button class="secondary" onclick="loadDuplicates()">Find duplicates</button>
+      <div id="dups" class="muted dupsWrap">Run “Find duplicates”.</div>
     </div>
   </div>
 </div>
+
 <div id="playlistModal" class="modalBackdrop" onclick="if(event.target===this)closePlaylistModal()">
   <div class="modalCard">
     <h3 style="margin-top:0">Add to playlist</h3>
     <p id="playlistModalInfo" class="muted"></p>
+    <div class="row">
+      <input id="newPlaylistName" placeholder="Create new playlist name">
+      <button class="secondary" onclick="createPlaylistFromLibraryModal()">Create</button>
+    </div>
     <div id="playlistModalList"></div>
+    <div class="row" style="margin-top:12px"><button class="secondary" onclick="closePlaylistModal()">Cancel</button></div>
+  </div>
+</div>
+
+<div id="confirmModal" class="modalBackdrop" onclick="if(event.target===this)closeConfirmModal()">
+  <div class="modalCard">
+    <h3 style="margin-top:0">Confirm</h3>
+    <p id="confirmText"></p>
     <div class="row" style="margin-top:12px">
-      <button class="secondary" onclick="closePlaylistModal()">Cancel</button>
+      <button class="danger" id="confirmOkBtn">Delete</button>
+      <button class="secondary" onclick="closeConfirmModal()">Cancel</button>
     </div>
   </div>
 </div>
+
 <script src="/js/api.js"></script><script src="/js/app.js"></script>
 <script>
   y1Ui.setActiveNav("library"); y1Ui.renderTopStatus();
-  var lastItems = [];
+  var state = { items: [], artists: [], byArtist: {}, artistKey: "", albumKey: "", selected: {} };
   var pendingAddPaths = [];
+  var pendingConfirmAction = null;
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+  function message(t) { document.getElementById("msg").textContent = t || ""; }
+  function key(v) { return (v || "").trim().toLowerCase(); }
+  function findById(id) { for (var i = 0; i < state.items.length; i++) if (state.items[i].id === id) return state.items[i]; return null; }
+  function currentSongs() {
+    var a = state.byArtist[state.artistKey] || { albums:{} };
+    var album = a.albums[state.albumKey] || { songs: [] };
+    return album.songs || [];
+  }
+
   function scanLine() {
-    fetch("/api/library/scan-status").then(function (r) { return r.json(); }).then(function (s) {
+    y1Api.libraryScanStatus && fetch("/api/library/scan-status").then(function (r) { return r.json(); }).then(function (s) {
       var el = document.getElementById("scanMeta");
-      if (el && s.last_scan_ts) el.textContent = "Last rescan: " + new Date(s.last_scan_ts).toLocaleString() + " — " + (s.last_scan_count || 0) + " files";
+      if (el && s.last_scan_ts) el.textContent = "Last resync: " + new Date(s.last_scan_ts).toLocaleString() + " — " + (s.last_scan_count || 0) + " files";
     });
   }
-  function load() {
+
+  function buildHierarchy(items) {
+    var byArtist = {}, artists = [];
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      var artistName = (it.artist || "").trim() || "Unknown Artist";
+      var albumName = (it.album || "").trim() || "Unknown Album";
+      var aKey = key(artistName), alKey = key(albumName);
+      if (!byArtist[aKey]) {
+        byArtist[aKey] = { name: artistName, albums: {}, albumKeys: [] };
+        artists.push(aKey);
+      }
+      if (!byArtist[aKey].albums[alKey]) {
+        byArtist[aKey].albums[alKey] = { name: albumName, songs: [] };
+        byArtist[aKey].albumKeys.push(alKey);
+      }
+      byArtist[aKey].albums[alKey].songs.push(it);
+    }
+    state.byArtist = byArtist;
+    state.artists = artists.sort(function (a,b){ return byArtist[a].name.localeCompare(byArtist[b].name); });
+    if (!state.artistKey || !state.byArtist[state.artistKey]) state.artistKey = state.artists[0] || "";
+    var a = state.byArtist[state.artistKey];
+    if (!a) { state.albumKey = ""; return; }
+    a.albumKeys.sort(function (x,y){ return a.albums[x].name.localeCompare(a.albums[y].name); });
+    if (!state.albumKey || !a.albums[state.albumKey]) state.albumKey = a.albumKeys[0] || "";
+  }
+
+  function renderArtists() {
+    var html = "";
+    for (var i = 0; i < state.artists.length; i++) {
+      var k = state.artists[i], a = state.byArtist[k], count = 0;
+      var aks = a.albumKeys;
+      for (var j = 0; j < aks.length; j++) count += a.albums[aks[j]].songs.length;
+      html += "<div class='artistItem " + (k === state.artistKey ? "active" : "") + "' onclick='selectArtist(\"" + esc(k) + "\")'>"
+           + "<div>" + esc(a.name) + "</div><div class='muted'>" + count + "</div></div>";
+    }
+    document.getElementById("artists").innerHTML = html || "<div class='muted'>No artists</div>";
+  }
+
+  function thumbText(name) {
+    var w = (name || "??").trim().split(/\s+/);
+    if (!w.length) return "??";
+    if (w.length === 1) return w[0].substring(0,2).toUpperCase();
+    return (w[0][0] + w[1][0]).toUpperCase();
+  }
+
+  function renderAlbums() {
+    var a = state.byArtist[state.artistKey];
+    if (!a) { document.getElementById("albums").innerHTML = "<div class='muted'>No albums</div>"; return; }
+    var html = "";
+    for (var i = 0; i < a.albumKeys.length; i++) {
+      var k = a.albumKeys[i], al = a.albums[k], c = al.songs.length;
+      var coverId = (al.songs && al.songs.length) ? parseInt(al.songs[0].id, 10) : 0;
+      html += "<div class='albumCard " + (k === state.albumKey ? "active" : "") + "' onclick='selectAlbum(\"" + esc(k) + "\")'>"
+           + "<div class='thumb' id='thumb-" + coverId + "'>" + esc(thumbText(al.name)) + "</div>"
+           + "<div>" + esc(al.name) + "</div><div class='albumMeta'>" + c + " song(s)</div></div>";
+    }
+    document.getElementById("albums").innerHTML = html || "<div class='muted'>No albums</div>";
+    loadAlbumThumbs();
+  }
+
+  function renderSongs() {
+    var songs = currentSongs();
+    var html = "";
+    for (var i = 0; i < songs.length; i++) {
+      var it = songs[i], checked = state.selected[it.id] ? "checked" : "";
+      html += "<div class='songRow'>"
+           + "<div class='songTitle' title='" + esc(it.path) + "'><div class='songMain'>" + esc(songLabel(it)) + "</div><div class='songMeta'>" + esc(songMeta(it)) + "</div></div>"
+           + "<div class='songActions'>"
+           + "<input class='songCheck' type='checkbox' " + checked + " onchange='togglePick(" + it.id + ", this.checked)'>"
+           + "<button class='secondary' onclick='addTrack(" + it.id + ")'>Add to playlist</button>"
+           + "<button class='danger' onclick='deleteTrack(" + it.id + ")'>Delete</button>"
+           + "</div>"
+           + "</div>";
+    }
+    document.getElementById("songs").innerHTML = html || "<div class='muted'>No songs</div>";
+  }
+
+  function selectArtist(k) { state.artistKey = k; state.albumKey = ""; buildHierarchy(state.items); renderArtists(); renderAlbums(); renderSongs(); }
+  function selectAlbum(k) { state.albumKey = k; renderAlbums(); renderSongs(); }
+  function togglePick(id, on) { if (on) state.selected[id] = true; else delete state.selected[id]; }
+  function toggleSelectVisible(on) { var songs = currentSongs(); for (var i = 0; i < songs.length; i++) togglePick(songs[i].id, on); renderSongs(); }
+  function selectedItems() {
+    var out = [];
+    for (var id in state.selected) if (state.selected.hasOwnProperty(id)) {
+      var it = findById(parseInt(id, 10));
+      if (it) out.push(it);
+    }
+    return out;
+  }
+
+  function loadLibrary() {
     var q = document.getElementById("q").value.trim();
     var sort = document.getElementById("sort").value;
     var order = document.getElementById("order").value;
     y1Api.libraryItems({ q: q, sort: sort, order: order }).then(function (items) {
-      lastItems = items || [];
-      var html = "";
-      for (var i = 0; i < lastItems.length; i++) {
-        var it = lastItems[i];
-        html += "<tr>";
-        html += "<td><input type='checkbox' class='rowSel' data-id='" + it.id + "' data-path=\"" + escapeHtml(it.path) + "\"></td>";
-        html += "<td>" + escapeHtml(it.path) + "</td>";
-        html += "<td>" + escapeHtml(it.artist) + "</td>";
-        html += "<td>" + escapeHtml(it.album) + "</td>";
-        html += "<td>" + escapeHtml(it.title) + "</td>";
-        html += "<td>" + escapeHtml(it.profile) + "</td>";
-        html += "<td>"
-             + "<button class='secondary' onclick='addToPlaylistByIndex(" + i + ")'>Add</button> "
-             + "<button class='secondary' onclick='addAlbumByIndex(" + i + ")'>Add album</button> "
-             + "<button class='danger' onclick='del(" + it.id + ")'>Delete</button>"
-             + "</td>";
-        html += "</tr>";
+      if (!Array.isArray(items)) {
+        state.items = [];
+        message("Library load failed: " + ((items && (items.error || items.message)) || "unknown"));
+        buildHierarchy(state.items);
+        renderArtists(); renderAlbums(); renderSongs();
+        return;
       }
-      document.getElementById("rows").innerHTML = html || "<tr><td colspan='7' class='muted'>No tracks</td></tr>";
-    });
-    scanLine();
-  }
-  function escapeHtml(s) {
-    if (s === undefined || s === null) return "";
-    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;");
-  }
-  function del(id) {
-    if (!confirm("Delete this track from the library and disk?")) return;
-    y1Api.libraryDeleteItem(id).then(function (r) {
-      if (r.ok === false) alert(r.error || "Delete failed");
-      load();
+      state.items = items || [];
+      buildHierarchy(state.items);
+      renderArtists(); renderAlbums(); renderSongs(); scanLine();
     });
   }
-  function rescan() {
-    y1Api.libraryRescan().then(function (r) {
-      alert("Rescan: indexed " + (r.indexed != null ? r.indexed : "?"));
-      load();
+
+  function songLabel(it) {
+    var t = (it && it.title ? String(it.title).trim() : "");
+    if (t.length) return t;
+    var p = (it && it.path ? String(it.path) : "");
+    var cut = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
+    return cut >= 0 ? p.substring(cut + 1) : (p || "(untitled)");
+  }
+
+  function fmtDuration(ms) {
+    var s = Math.floor((ms || 0) / 1000);
+    var m = Math.floor(s / 60);
+    var r = s % 60;
+    return m + ":" + (r < 10 ? "0" + r : r);
+  }
+  function fmtSize(bytes) {
+    var b = Number(bytes || 0);
+    if (!b) return "0 B";
+    var units = ["B","KB","MB","GB"];
+    var i = 0;
+    while (b >= 1024 && i < units.length - 1) { b /= 1024; i++; }
+    return (i === 0 ? Math.round(b) : b.toFixed(1)) + " " + units[i];
+  }
+  function songMeta(it) {
+    var parts = [];
+    parts.push("Len " + fmtDuration(it.duration_ms || 0));
+    parts.push("Size " + fmtSize(it.size_bytes || 0));
+    if (it.profile) parts.push("Profile " + it.profile);
+    parts.push(it.path || "");
+    return parts.join(" • ");
+  }
+
+  function loadAlbumThumbs() {
+    var a = state.byArtist[state.artistKey];
+    if (!a) return;
+    var seen = {};
+    for (var i = 0; i < a.albumKeys.length; i++) {
+      var al = a.albums[a.albumKeys[i]];
+      if (!al || !al.songs || !al.songs.length) continue;
+      var id = parseInt(al.songs[0].id, 10);
+      if (!id || seen[id]) continue;
+      seen[id] = true;
+      (function (mediaId) {
+        y1Api.libraryArtwork(mediaId).then(function (r) {
+          if (!r || !r.ok || !r.data_url) return;
+          var el = document.getElementById("thumb-" + mediaId);
+          if (!el) return;
+          el.innerHTML = "<img alt='cover' src='" + esc(r.data_url) + "'>";
+        });
+      })(id);
+    }
+  }
+
+  function deleteTrack(id) {
+    askConfirm("Delete this track from library and disk?", function () {
+      y1Api.libraryDeleteItem(id).then(function (r) {
+      if (r && r.ok === false) { message(r.error || "Delete failed"); return; }
+      message("Track deleted.");
+      delete state.selected[id];
+      loadLibrary();
+      });
     });
   }
-  function reindexMeta() {
-    y1Api.libraryReindexMetadata().then(function (r) {
-      alert("Reindexed metadata: " + (r.reindexed != null ? r.reindexed : "?"));
-      load();
-    });
-  }
+  function rescan() { y1Api.libraryRescan().then(function (r) { message("Indexed " + (r.indexed != null ? r.indexed : "?") + " files"); loadLibrary(); }); }
+  function reindexMeta() { y1Api.libraryReindexMetadata().then(function (r) { message("Reindexed: " + (r.reindexed != null ? r.reindexed : "?")); loadLibrary(); }); }
+
   function openPlaylistModal(pathsToAdd) {
     pendingAddPaths = pathsToAdd || [];
     if (!pendingAddPaths.length) return;
     y1Api.playlists().then(function (pls) {
-      var playlistCache = pls || [];
-      if (!playlistCache.length) {
-        alert("No playlists yet. Create one in Playlists.");
-        return;
-      }
-      document.getElementById("playlistModalInfo").textContent = "Adding " + pendingAddPaths.length + " track(s). Choose destination playlist:";
+      pls = pls || [];
+      if (!pls.length) { message("No playlists yet."); return; }
+      document.getElementById("playlistModalInfo").textContent = "Adding " + pendingAddPaths.length + " track(s).";
       var html = "";
-      for (var i = 0; i < playlistCache.length; i++) {
-        var pl = playlistCache[i];
-        html += "<div class='playlistOption'><div>" + escapeHtml(pl.name) + " <span class='muted'>(" + (pl.entries || 0) + " entries)</span></div>"
-             + "<button onclick='confirmAddToPlaylist(" + pl.id + ",\"" + escapeHtml(pl.name).replace(/"/g, "&quot;") + "\")'>Add here</button></div>";
+      for (var i = 0; i < pls.length; i++) {
+        var pl = pls[i];
+        html += "<div class='playlistOption'><div>" + esc(pl.name) + " <span class='muted'>(" + (pl.entries || 0) + ")</span></div>"
+             + "<button onclick='confirmAddToPlaylist(" + pl.id + ",\"" + esc(pl.name).replace(/"/g, "&quot;") + "\")'>Add</button></div>";
       }
       document.getElementById("playlistModalList").innerHTML = html;
       document.getElementById("playlistModal").style.display = "block";
     });
   }
-  function closePlaylistModal() {
-    document.getElementById("playlistModal").style.display = "none";
-    pendingAddPaths = [];
-  }
+  function closePlaylistModal() { document.getElementById("playlistModal").style.display = "none"; pendingAddPaths = []; }
   function confirmAddToPlaylist(id, name) {
+    var count = pendingAddPaths.length;
     y1Api.addPlaylistTracksBulk(id, pendingAddPaths).then(function (r) {
       closePlaylistModal();
-      alert(r && r.ok === false ? ("Failed: " + (r.error || "")) : ("Added " + pendingAddPaths.length + " track(s) to " + name));
+      message(r && r.ok === false ? ("Failed: " + (r.error || "")) : ("Added " + count + " track(s) to " + name));
     });
   }
-  function addToPlaylistByIndex(itemIndex) {
-    var it = lastItems[itemIndex];
+
+  function createPlaylistFromLibraryModal() {
+    var n = document.getElementById("newPlaylistName").value.trim();
+    if (!n) { message("Enter playlist name."); return; }
+    y1Api.createPlaylist(n).then(function (r) {
+      if (!r || r.ok === false || !r.id) {
+        message("Create playlist failed.");
+        return;
+      }
+      document.getElementById("newPlaylistName").value = "";
+      message("Playlist created.");
+      // refresh list and immediately add to new playlist
+      confirmAddToPlaylist(r.id, n);
+    });
+  }
+
+  function addTrack(id) {
+    var it = findById(id);
     if (!it) return;
     openPlaylistModal([it.path]);
   }
-  function addAlbumByIndex(itemIndex) {
-    var it = lastItems[itemIndex];
-    if (!it || !it.album) {
-      alert("This track has no album metadata.");
-      return;
-    }
-    var sameAlbumPaths = [];
-    for (var i = 0; i < lastItems.length; i++) {
-      if (String(lastItems[i].album || "") === String(it.album || "")) {
-        sameAlbumPaths.push(lastItems[i].path);
-      }
-    }
-    if (!sameAlbumPaths.length) return;
-    openPlaylistModal(sameAlbumPaths);
-  }
-  function getSelectedRows() {
-    var selected = [];
-    document.querySelectorAll(".rowSel:checked").forEach(function (el) {
-      selected.push({
-        id: parseInt(el.getAttribute("data-id"), 10),
-        path: el.getAttribute("data-path")
-      });
-    });
-    return selected;
-  }
-  function toggleSelectAll(checked) {
-    document.querySelectorAll(".rowSel").forEach(function (el) { el.checked = !!checked; });
-  }
   function bulkAddSelected() {
-    var rows = getSelectedRows();
-    if (!rows.length) {
-      alert("Select at least one track.");
-      return;
-    }
-    var paths = rows.map(function (r) { return r.path; });
-    openPlaylistModal(paths);
+    var rows = selectedItems();
+    if (!rows.length) { message("Select at least one track."); return; }
+    openPlaylistModal(rows.map(function (r) { return r.path; }));
   }
   function bulkDeleteSelected() {
-    var rows = getSelectedRows();
-    if (!rows.length) {
-      alert("Select at least one track.");
-      return;
-    }
-    if (!confirm("Delete " + rows.length + " selected track(s) from disk and library?")) return;
-    var p = Promise.resolve();
-    var failed = 0;
-    rows.forEach(function (r) {
-      p = p.then(function () {
-        return y1Api.libraryDeleteItem(r.id).then(function (res) {
-          if (res && res.ok === false) failed++;
-        });
-      });
-    });
-    p.then(function () {
-      alert(failed ? ("Deleted with " + failed + " failures.") : "Deleted selected tracks.");
-      load();
+    var rows = selectedItems();
+    if (!rows.length) { message("Select at least one track."); return; }
+    askConfirm("Delete " + rows.length + " selected track(s)?", function () {
+      var p = Promise.resolve(), failed = 0;
+      for (var i = 0; i < rows.length; i++) {
+        (function (id) {
+          p = p.then(function () { return y1Api.libraryDeleteItem(id).then(function (r) { if (r && r.ok === false) failed++; delete state.selected[id]; }); });
+        })(rows[i].id);
+      }
+      p.then(function () { message(failed ? ("Deleted with " + failed + " failures.") : "Deleted selected tracks."); loadLibrary(); });
     });
   }
+
   function loadDuplicates() {
     var box = document.getElementById("dups");
     box.textContent = "Scanning duplicates...";
-    y1Api.libraryDuplicates().then(function(groups) {
+    y1Api.libraryDuplicates().then(function (groups) {
       groups = groups || [];
-      if (!groups.length) {
-        box.innerHTML = "<span class='muted'>No duplicates found.</span>";
-        return;
-      }
+      if (!groups.length) { box.innerHTML = "<span class='muted'>No duplicates found.</span>"; return; }
       var html = "";
       for (var i = 0; i < groups.length; i++) {
-        var g = groups[i];
-        html += "<div style='border:1px solid #333;padding:8px;margin:8px 0;border-radius:8px'>";
-        html += "<div><b>" + escapeHtml(g.key_title || "(untitled)") + "</b> — " + escapeHtml(g.key_artist || "(unknown artist)") + " <span class='muted'>(" + (g.count || 0) + " copies)</span></div>";
+        var g = groups[i], items = g.items || [];
+        html += "<div><div><b>" + esc(g.key_title || "(untitled)") + "</b> — " + esc(g.key_artist || "(unknown)") + " <span class='muted'>(" + (g.count || 0) + " copies)</span></div>";
         html += "<div class='muted'>Duration: " + Math.floor((g.duration_ms || 0) / 1000) + "s</div>";
-        var items = g.items || [];
         for (var j = 0; j < items.length; j++) {
-          var it = items[j];
-          var keep = j === 0 ? " <span class='muted'>(newest, keep)</span>" : "";
-          html += "<div style='display:flex;justify-content:space-between;gap:8px;padding:4px 0'>";
-          html += "<div style='word-break:break-all'>" + escapeHtml(it.path || "") + keep + "</div>";
-          if (j > 0) {
-            html += "<button class='danger' onclick='deleteDup(" + parseInt(it.id, 10) + ")'>Delete</button>";
-          } else {
-            html += "<span class='muted'>—</span>";
-          }
+          var it = items[j], keep = j === 0;
+          html += "<div class='songRow'><div class='songTitle'>" + esc(it.path || "") + (keep ? " <span class='muted'>(keep)</span>" : "") + "</div>";
+          html += keep ? "<span class='muted'>—</span>" : "<button class='danger' onclick='deleteTrack(" + parseInt(it.id,10) + ")'>Delete</button>";
           html += "</div>";
         }
         html += "</div>";
@@ -244,17 +391,23 @@
       box.innerHTML = html;
     });
   }
-  function deleteDup(id) {
-    if (!confirm("Delete this duplicate from disk and library?")) return;
-    y1Api.libraryDeleteItem(id).then(function (r) {
-      if (r && r.ok === false) {
-        alert("Delete failed: " + (r.error || ""));
-        return;
-      }
-      load();
-      loadDuplicates();
-    });
+
+  function askConfirm(text, action) {
+    pendingConfirmAction = action;
+    document.getElementById("confirmText").textContent = text || "Are you sure?";
+    document.getElementById("confirmModal").style.display = "block";
   }
-  load();
+  function closeConfirmModal() {
+    document.getElementById("confirmModal").style.display = "none";
+    pendingConfirmAction = null;
+  }
+  document.getElementById("confirmOkBtn").onclick = function () {
+    var action = pendingConfirmAction;
+    closeConfirmModal();
+    if (action) action();
+  };
+
+  document.getElementById("q").addEventListener("keydown", function (e) { if (e.key === "Enter") loadLibrary(); });
+  loadLibrary();
 </script>
 </body></html>

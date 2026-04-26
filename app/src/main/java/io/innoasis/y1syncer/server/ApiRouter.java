@@ -14,6 +14,7 @@ public class ApiRouter {
     private static final Pattern PROFILE_ID_PATTERN = Pattern.compile("^/api/profiles/(\\d+)$");
     private static final Pattern PROFILE_ACTION_PATTERN = Pattern.compile("^/api/profiles/(\\d+)/(duplicate|enable|disable|test-connection|sync-now)$");
     private static final Pattern LIBRARY_ITEM_ID_PATTERN = Pattern.compile("^/api/library/items/(\\d+)$");
+    private static final Pattern LIBRARY_ARTWORK_ID_PATTERN = Pattern.compile("^/api/library/artwork/(\\d+)$");
     private static final Pattern PLAYLIST_ID_PATTERN = Pattern.compile("^/api/playlists/(\\d+)$");
     private static final Pattern PLAYLIST_DUPLICATE_PATTERN = Pattern.compile("^/api/playlists/(\\d+)/duplicate$");
     private static final Pattern PLAYLIST_ENTRIES_PATTERN = Pattern.compile("^/api/playlists/(\\d+)/entries$");
@@ -110,6 +111,11 @@ public class ApiRouter {
             if (libDel.matches() && "DELETE".equals(method)) {
                 long mid = Long.parseLong(libDel.group(1));
                 return new ApiResponse(200, runtimeController.deleteLibraryItem(mid).toString());
+            }
+            Matcher libArt = LIBRARY_ARTWORK_ID_PATTERN.matcher(uri);
+            if (libArt.matches() && "GET".equals(method)) {
+                long mid = Long.parseLong(libArt.group(1));
+                return new ApiResponse(200, runtimeController.getLibraryArtworkJson(mid).toString());
             }
             if ("/api/library/rescan".equals(uri) && "POST".equals(method)) {
                 return new ApiResponse(200, runtimeController.maintenanceAction("rescan-library").toString());

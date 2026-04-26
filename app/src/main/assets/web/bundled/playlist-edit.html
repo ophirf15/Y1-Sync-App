@@ -1,6 +1,11 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Y1 Console - Playlist Editor</title><link rel="stylesheet" href="/css/app.css"></head>
+  <title>Y1 Console - Playlist Editor</title><link rel="stylesheet" href="/css/app.css">
+  <style>
+    .modalBackdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; z-index: 9999; }
+    .modalCard { max-width: 560px; margin: 10vh auto; background: #1b1b1b; color: #eee; border: 1px solid #444; border-radius: 10px; padding: 14px; }
+  </style>
+</head>
 <body><div class="layout"><div class="sidebar"><h1>Y1 Console</h1>
   <a href="/dashboard.html">Dashboard</a><a href="/profiles.html">Sync Profiles</a><a href="/library.html">Library</a><a class="active" href="/playlists.html">Playlists</a><a href="/maintenance.html">Maintenance</a><a href="/updates.html">Updates</a><a href="/settings.html">Settings/Status</a>
 </div><div class="content"><div class="topbar"><div class="ip" id="ipHeader">Loading...</div><div class="muted" id="statusHeader"></div></div>
@@ -13,18 +18,37 @@
       <button class="danger" onclick="delPl()">Delete playlist</button>
     </div>
     <div class="row">
-      <button onclick="addTrack()">Add track (absolute path)</button>
+      <button onclick="openAddTrackModal()">Add track (absolute path)</button>
       <button onclick="saveOrder()" class="secondary">Save drag order</button>
       <button class="secondary" onclick="exportM3u()">Export M3U8</button>
       <a href="/playlists.html"><button class="secondary">Back</button></a>
     </div>
+    <div id="msg" class="muted"></div>
     <table><thead><tr><th>#</th><th>Artist</th><th>Album</th><th>Title</th><th>Path</th><th></th></tr></thead><tbody id="rows"></tbody></table>
   </div>
 </div></div>
+
+<div id="addTrackModal" class="modalBackdrop" onclick="if(event.target===this)closeAddTrackModal()">
+  <div class="modalCard">
+    <h3 style="margin-top:0">Add track to playlist</h3>
+    <input id="trackPathInput" placeholder="/storage/emulated/0/Music/song.mp3">
+    <div class="row"><button onclick="addTrack()">Add</button><button class="secondary" onclick="closeAddTrackModal()">Cancel</button></div>
+  </div>
+</div>
+
+<div id="confirmModal" class="modalBackdrop" onclick="if(event.target===this)closeConfirmModal()">
+  <div class="modalCard">
+    <h3 style="margin-top:0">Confirm</h3>
+    <p id="confirmText"></p>
+    <div class="row"><button class="danger" id="confirmOkBtn">Delete</button><button class="secondary" onclick="closeConfirmModal()">Cancel</button></div>
+  </div>
+</div>
+
 <script src="/js/api.js"></script><script src="/js/app.js"></script>
 <script>
   y1Ui.renderTopStatus();
   var entryOrder = [];
+  var pendingConfirmAction = null;
   var playlistId = (function () {
     var m = /[?&]id=(\d+)/.exec(window.location.search);
     return m ? parseInt(m[1], 10) : 0;
@@ -33,7 +57,7 @@
   function loadMeta() {
     if (!playlistId) return;
     y1Api.playlist(playlistId).then(function (p) {
-      if (p.error) { alert(p.error); return; }
+      if (p.error) { message(p.error); return; }
       document.getElementById("plName").value = p.name || "";
     });
   }
@@ -53,11 +77,13 @@
     });
   }
   function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
+  function message(t) { document.getElementById("msg").textContent = t || ""; }
   function rename() {
     var n = document.getElementById("plName").value.trim();
     if (!n || !playlistId) return;
     y1Api.updatePlaylist(playlistId, { name: n }).then(function (r) {
-      if (!r.ok) alert("Rename failed");
+      if (!r.ok) message("Rename failed");
+      else message("Playlist renamed.");
       loadMeta();
     });
   }
@@ -65,26 +91,38 @@
     if (!playlistId) return;
     y1Api.duplicatePlaylist(playlistId).then(function (r) {
       if (r.id) window.location.href = "/playlist-edit.html?id=" + r.id;
-      else alert("Duplicate failed");
+      else message("Duplicate failed");
     });
   }
   function delPl() {
-    if (!playlistId || !confirm("Delete entire playlist?")) return;
+    if (!playlistId) return;
     y1Api.deletePlaylist(playlistId).then(function () {
       window.location.href = "/playlists.html";
     });
   }
+  function openAddTrackModal() {
+    document.getElementById("trackPathInput").value = "";
+    document.getElementById("addTrackModal").style.display = "block";
+  }
+  function closeAddTrackModal() { document.getElementById("addTrackModal").style.display = "none"; }
   function addTrack() {
-    var p = prompt("Absolute file path on device (e.g. /storage/emulated/0/Music/song.mp3)");
+    var p = document.getElementById("trackPathInput").value.trim();
     if (!p || !playlistId) return;
     y1Api.addPlaylistTrack(playlistId, p).then(function (r) {
+      closeAddTrackModal();
+      message((r && r.ok === false) ? "Add failed." : "Track added.");
       loadEntries();
     });
   }
   function removeEntry(entryId) {
-    if (!confirm("Remove this entry?")) return;
-    y1Api.removePlaylistEntry(playlistId, entryId).then(function () { loadEntries(); });
+    pendingConfirmAction = function () {
+      y1Api.removePlaylistEntry(playlistId, entryId).then(function () { message("Entry removed."); loadEntries(); });
+    };
+    document.getElementById("confirmText").textContent = "Remove this entry from playlist?";
+    document.getElementById("confirmModal").style.display = "block";
   }
+  function closeConfirmModal() { document.getElementById("confirmModal").style.display = "none"; pendingConfirmAction = null; }
+  document.getElementById("confirmOkBtn").onclick = function () { if (pendingConfirmAction) pendingConfirmAction(); closeConfirmModal(); };
   function exportM3u() {
     if (!playlistId) return;
     window.open(y1Api.playlistExportUrl(playlistId), "_blank");
@@ -115,8 +153,8 @@
       order.push(parseInt(r.getAttribute("data-entry-id"), 10));
     });
     y1Api.reorderPlaylist(playlistId, order).then(function (r) {
-      if (r.ok === false) alert("Failed to save order");
-      else alert("Order saved");
+      if (r.ok === false) message("Failed to save order");
+      else message("Order saved.");
       loadEntries();
     });
   }

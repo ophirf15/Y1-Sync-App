@@ -4,6 +4,8 @@ import android.content.ContentValues;
 import android.content.Context;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
+import android.media.MediaMetadataRetriever;
+import android.util.Base64;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -85,7 +87,7 @@ public class LibraryIndexer {
         }
 
         StringBuilder sql = new StringBuilder();
-        sql.append("SELECT m.id, m.file_path, m.artist, m.album, m.title, IFNULL(p.name,'') ");
+        sql.append("SELECT m.id, m.file_path, m.artist, m.album, m.title, IFNULL(p.name,''), IFNULL(m.duration_ms,0) ");
         sql.append("FROM ").append(DbContract.T_MEDIA_INDEX).append(" m ");
         sql.append("LEFT JOIN ").append(DbContract.T_PROFILES).append(" p ON m.profile_id = p.id ");
         String[] args = null;
@@ -108,6 +110,15 @@ public class LibraryIndexer {
                 row.put("album", c.isNull(3) ? "" : nullToEmpty(c.getString(3)));
                 row.put("title", c.isNull(4) ? "" : nullToEmpty(c.getString(4)));
                 row.put("profile", nullToEmpty(c.getString(5)));
+                int durationMs = c.isNull(6) ? 0 : c.getInt(6);
+                row.put("duration_ms", durationMs);
+                row.put("modified_ts", 0L);
+                try {
+                    File f = new File(row.optString("path", ""));
+                    row.put("size_bytes", (f.exists() && f.isFile()) ? f.length() : 0L);
+                } catch (Exception ignored) {
+                    row.put("size_bytes", 0L);
+                }
                 arr.put(row);
             }
             return arr;
@@ -230,6 +241,46 @@ public class LibraryIndexer {
             }
         }
         return null;
+    }
+
+    public String artworkDataUrlByMediaId(long mediaId) {
+        SQLiteDatabase db = dbHelper.getReadableDatabase();
+        Cursor c = db.query(DbContract.T_MEDIA_INDEX, new String[]{"file_path"}, "id=?",
+                new String[]{String.valueOf(mediaId)}, null, null, null, "1");
+        try {
+            if (!c.moveToFirst()) {
+                return "";
+            }
+            String path = c.getString(0);
+            if (path == null || path.length() == 0) {
+                return "";
+            }
+            File file = new File(path);
+            if (!file.isFile()) {
+                return "";
+            }
+            MediaMetadataRetriever r = new MediaMetadataRetriever();
+            try {
+                r.setDataSource(path);
+                byte[] art = r.getEmbeddedPicture();
+                if (art == null || art.length == 0) {
+                    return "";
+                }
+                if (art.length > 1024 * 1024) {
+                    return "";
+                }
+                return "data:image/jpeg;base64," + Base64.encodeToString(art, Base64.NO_WRAP);
+            } catch (Throwable ignored) {
+                return "";
+            } finally {
+                try {
+                    r.release();
+                } catch (Throwable ignored2) {
+                }
+            }
+        } finally {
+            c.close();
+        }
     }
 
     /**

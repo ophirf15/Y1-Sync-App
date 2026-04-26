@@ -603,6 +603,11 @@ public class CoreRuntimeController {
         return new JSONObject().put("ok", true);
     }
 
+    public JSONObject getLibraryArtworkJson(long mediaId) throws JSONException {
+        String dataUrl = libraryIndexer.artworkDataUrlByMediaId(mediaId);
+        return new JSONObject().put("ok", dataUrl.length() > 0).put("data_url", dataUrl);
+    }
+
     public JSONObject reindexLibraryMetadata() throws JSONException {
         int n = libraryIndexer.reindexAllMetadata();
         logRepository.addLog("INFO", "Reindexed metadata for " + n + " tracks");
